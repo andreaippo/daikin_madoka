@@ -36,13 +36,27 @@ Si vous hébergez ce repository sur GitHub :
 external_components:
   - source:
       type: git
-      url: https://github.com/votre-utilisateur/daikin_madoka
-      ref: main
+      url: https://github.com/dasimon135/daikin_madoka
+      ref: v2.1.1
       path: esphome_components
     components: [ madoka ]
 ```
 
 Le champ `path: esphome_components` est important dans ce dépôt pour charger la version maintenue du composant externe.
+
+Ne pointez pas vos ESP32 sur `main` en production. Utilisez un tag Git validé pour éviter qu'une évolution de la partie Home Assistant ou d'un composant ESPHome casse vos déploiements existants.
+
+## Politique de versions recommandée
+
+- `main` : intégration continue, peut contenir des changements non encore validés sur tous les ESP32
+- tags `vX.Y.Z` : versions stables recommandées pour ESPHome
+- HACS : peut suivre les releases du dépôt sans imposer aux utilisateurs ESPHome de suivre `main`
+
+Convention simple conseillée :
+
+1. Taguer une version seulement après validation réelle sur matériel.
+2. Documenter dans le changelog tout changement YAML ou comportemental côté ESPHome.
+3. Demander aux utilisateurs ESPHome de mettre à jour explicitement leur `ref` quand ils veulent changer de version.
 
 ## Configuration exemple
 

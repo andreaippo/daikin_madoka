@@ -58,7 +58,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    # pylint: disable=no-self-use
     def validate_macs(self, macs):
         """Validate all the macs have a valid format."""
         for mac in macs:
@@ -73,7 +72,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             await discover_devices(1, adapter)
             return True
-        # pylint: disable=broad-except
         except Exception:
             return False
 
@@ -86,28 +84,19 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
 
         if user_input is not None:
-
-            # Check if all the devices are valid MAC addresses
             macs = list(map(lambda x: x.strip(), user_input[CONF_DEVICES].split(",")))
             if not self.validate_macs(macs):
                 errors[CONF_DEVICES] = "not_a_mac"
 
-            # Check if the adapter exists
             is_valid_adapter = await self.is_valid_adapter(user_input[CONF_DEVICE])
             if not is_valid_adapter:
                 errors[CONF_DEVICE] = "cannot_connect"
 
-            # Input is valid, set data.
             if not errors:
-
                 if user_input[CONF_DISCOVERY]:
-
-                    # Disconnect all the devices so they can be found
-
                     for address in macs:
                         await force_device_disconnect(address)
 
-                    # Discover devices
                     devices = await discover_devices(
                         user_input[CONF_SCAN_INTERVAL], user_input[CONF_DEVICE]
                     )
@@ -115,7 +104,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     discovered_macs = set(list(map(lambda x: x.address, devices)))
                     not_found = set(macs) - discovered_macs
 
-                    # Check if all the devices have been found
                     if len(not_found) > 0:
                         errors[CONF_DEVICES] = "device_not_found"
 
@@ -130,5 +118,3 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="user", data_schema=self.schema, errors=errors
             )
-
-   
