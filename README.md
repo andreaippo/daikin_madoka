@@ -1,106 +1,173 @@
 # Home Assistant Daikin Madoka
 
-This repository provides **two ways** to control Daikin Madoka BRC1H Bluetooth thermostats:
-
-1. **Home Assistant Custom Integration** (this directory) - Direct Bluetooth control
-2. **ESPHome Components** (`esphome_components/`) - ESP32 proxy for remote control
+Integration for Daikin Madoka BRC1H Bluetooth thermostats. This repository provides **two independent approaches** — choose one based on your setup.
 
 ![](images/madoka.png)
 
-![](images/integration.png)  ![](images/climate.png) ![](images/entities.png)
+---
 
-## Choose Your Approach
+## Which approach should I use?
 
-### Option 1: Home Assistant Integration (Direct Bluetooth)
+| | Option 1: HA Integration | Option 2: ESPHome |
+|---|---|---|
+| **Hardware needed** | None (BLE from HA host) | ESP32 (e.g. M5Stack Atom) |
+| **HA server location** | Must be within BLE range | Anywhere on your network |
+| **Docker/VM** | Requires DBUS config | Works out of the box |
+| **Install via** | HACS | ESPHome dashboard |
 
-**Pros:**
-- Direct connection from Home Assistant server
-- No additional hardware required
-- Lower latency
-
-**Cons:**
-- Home Assistant server must be within Bluetooth range
-- Requires DBUS configuration for Docker/VM setups
-
-See installation instructions below.
-
-### Option 2: ESPHome Proxy (Remote Bluetooth)
-
-**Pros:**
-- Place ESP32 device anywhere within Bluetooth range
-- Multiple thermostats via single ESP32
-- Works with Home Assistant in Docker/VM without DBUS complexity
-
-**Cons:**
-- Requires ESP32 hardware (e.g., M5Stack Atom Lite)
-- Additional device to maintain
-
-See `esphome_components/README.md` for details.
-
-## Development Workflow
-
-This public repository uses GitHub Actions for CI validation on pushes and pull requests.
+**If you have an ESP32 device, use Option 2.** It's simpler, more reliable, and works regardless of how HA is hosted.
 
 ---
 
-## Home Assistant Integration Installation
+## Option 1 — Home Assistant Integration (Direct Bluetooth)
 
-Download folder and copy under "custom_components" folder in the Home Assistant configuration folder.
+> ⚠️ **Known issue**: the `pymadoka` library uses `from bleak import discover`, removed in bleak 0.20. Recent HA versions bundle a newer bleak — if you get `cannot import name 'discover' from 'bleak'`, use **Option 2** instead.
 
-## Requirements
+The integration connects to the Madoka thermostat directly from the HA host via Bluetooth, using the [pymadoka](https://github.com/dasim135/pymadoka) library.
 
-Due to the thermostat security constraints, is has to be manually paired with the system where HomeAssistant runs. This has only been tested in Linux, but the following steps should be easy to follow:
+### Installation
 
-1. Disconnect the thermostat from any other device (thermostat Bluetooth menu, forget). This has to be done to make the device visible during the scanning.
-2. On a terminal, run "bluetoothctl"
-3. Type "agent KeyboardDisplay"
-4. Type "remove <BRC1H_MAC_ADDRESS>". This step helps to remove unsucessful previous pairings and makes the device visible.
-5. Type "scan on" and wait until the mac is listed.
-6. Type "scan off"
-7. Type "pair <BRC1H_MAC_ADDRESS>". You will be presented a confirmation prompt, accept it.
-8. Go to the thermostat and accept the pairing code. It requires to do it fairly soon after the previous step or it will be cancelled.
-9. The device is ready and you can start the integration in Home Assistant.
+**Via HACS (recommended):**
+1. Add this repository as a custom HACS integration repository.
+2. Install **Daikin Madoka** from HACS.
+3. Restart Home Assistant.
 
-A dedicated Bluetooth adapter is desirable. If you run Home Assistant in a virtual machine, it makes it easiser for the device to be used. In VMWare, make sure to remove the checkbox "Share bluetooth devices with guests". This way, the adapter will become visible to the virtual machine and will use it without problem. 
+**Manual:**
+Copy `custom_components/daikin_madoka/` into your HA `custom_components/` directory, then restart.
 
-## Usage
+### Entities exposed
 
-A new integration will be available under the name "Daikin Madoka". You have to provide the following details:
+Each thermostat creates:
+- `climate.*` — thermostat (mode, setpoint, fan speed, current temperature)
+- `sensor.*_indoor_temperature` — indoor temperature
+- `sensor.*_outdoor_temperature` — outdoor temperature
+- `binary_sensor.*_clean_filter` — filter alert (device_class: problem)
+- `button.*_reset_filter` — reset filter timer
 
-- Bluetooth MAC Address of the BRC1H device(s)
-- Name of the Bluetooth adapter (usually hci0)
+### Requirements
 
-The integration will scan for the devices and will create the thermostat and the temperature sensor.
-## Troubleshooting
+The Madoka uses Bluetooth pairing. You must pair the device once from the HA host:
 
-* **The integration form shows an error "The device could not be found" next to the adapter field but "hcitool dev" lists the device" **
-
-This could be a problem related to the configuration of the DBUS service. Make sure DBUS is installed in the host (it generally is) and that it is available to your homeassistant docker.
-
-You can test it using *bleak* CLI tool *bleak-lescan* inside your instance. Follow these steps:
-
-```
-$ docker exec -ti <homeassistant_container_id> /bin/bash
-$ bleak-lescan -i <adapter>
-```
-
-If the following error appears, DBUS is not available to the docker instance.
-```
-File "/usr/local/lib/python3.8/site-packages/bleak/backends/bluezdbus/scanner.py", line 90, in start
-    self._bus = await client.connect(self._reactor, "system").asFuture(loop)
-twisted.internet.error.ConnectError: An error occurred while connecting: Failed to connect to any bus address. Last error: An error occurred while connecting: 2: No such file or directory..
-“Failed to connect to any bus address”
-```
-To make DBus available you have to link /var/run/dbus/system_bus_socket inside the container and also run docker in privileged mode. 
-
-Modify your docker-compose.yml:
-```
-volumes:
-  - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
-privileged: true
+```bash
+bluetoothctl
+agent KeyboardDisplay
+remove <MAC_ADDRESS>
+scan on
+# wait for device to appear, then:
+scan off
+pair <MAC_ADDRESS>
+# accept on thermostat within a few seconds
 ```
 
-Kudos to [Jose](https://community.home-assistant.io/u/jcsogo) for the solution.
+> If running HA in Docker: mount `/var/run/dbus/system_bus_socket` and run in privileged mode.
+
+---
+
+## Option 2 — ESPHome (ESP32 Proxy)
+
+An ESP32 bridges the Bluetooth connection over WiFi. HA talks to the ESP via the standard ESPHome API — no special configuration needed on the HA side.
+
+### Minimal config
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/dasimon135/daikin_madoka
+      ref: v2.1.1
+      path: esphome_components
+    components: [madoka]
+
+esp32_ble:
+  io_capability: display_yes_no
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 320ms
+    window: 30ms
+    active: true
+
+ble_client:
+  - mac_address: "AA:BB:CC:DD:EE:FF"
+    id: my_madoka
+    on_disconnect:
+      then:
+        - delay: 10s
+        - ble_client.connect: my_madoka
+
+climate:
+  - platform: madoka
+    name: "Living Room"
+    ble_client_id: my_madoka
+    update_interval: 15s
+```
+
+### Optional entities
+
+Add any of these under your `climate: - platform: madoka` block:
+
+```yaml
+    outdoor_temperature:
+      name: "Outdoor Temperature"
+    clean_filter:
+      name: "Filter Alert"
+    firmware_version:
+      name: "Firmware"
+    eye_brightness:
+      name: "Display Brightness"
+    reset_filter:
+      name: "Reset Filter"
+```
+
+### Entities exposed
+
+Each thermostat creates:
+- `climate.*` — thermostat (mode, setpoint, fan speed, current temperature)
+- `sensor.*_outdoor_temperature` — outdoor temperature (optional)
+- `binary_sensor.*_clean_filter` — filter alert (optional)
+- `text_sensor.*_firmware_version` — firmware version (optional)
+- `number.*_eye_brightness` — display LED brightness 0–19 (optional)
+- `button.*_reset_filter` — reset filter timer (optional)
+
+### Pinning versions
+
+Always pin to a specific release tag — never track `main` directly (main may contain work-in-progress changes):
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/dasimon135/daikin_madoka
+      ref: v2.1.1        # replace with latest tag
+      path: esphome_components
+    components: [madoka]
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for available versions.
+
+---
+
+## Dashboard cards
+
+### Thermostat card
+
+```yaml
+type: thermostat
+entity: climate.my_madoka
+```
+
+### Full entity card
+
+```yaml
+type: entities
+entities:
+  - entity: climate.my_madoka
+  - entity: sensor.my_madoka_outdoor_temperature
+  - entity: binary_sensor.my_madoka_clean_filter
+  - entity: button.my_madoka_reset_filter
+```
+
+---
 
 ## Credits
 

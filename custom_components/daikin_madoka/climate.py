@@ -12,7 +12,12 @@ from pymadoka import (
     SetPointStatus,
 )
 from pymadoka.connection import ConnectionStatus
-from homeassistant.components.climate import ClimateEntity, HVACMode, HVACAction, ClimateEntityFeature
+from homeassistant.components.climate import (
+    ClimateEntity,
+    ClimateEntityFeature,
+    HVACAction,
+    HVACMode,
+)
 from homeassistant.components.climate.const import (
     FAN_AUTO,
     FAN_HIGH,
@@ -97,17 +102,16 @@ class DaikinMadokaClimate(ClimateEntity):
     def supported_features(self):
         """Return the list of supported features."""
         return (
-          ClimateEntityFeature.TARGET_TEMPERATURE
-          | ClimateEntityFeature.FAN_MODE
-          | ClimateEntityFeature.TURN_ON
-          | ClimateEntityFeature.TURN_OFF
+            ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.FAN_MODE
+            | ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
         )
+
     @property
     def available(self):
         """Return the availability."""
-        return (
-            self.controller.connection.connection_status == ConnectionStatus.CONNECTED
-        )
+        return self.controller.connection.connection_status == ConnectionStatus.CONNECTED
 
     @property
     def name(self):
@@ -195,10 +199,8 @@ class DaikinMadokaClimate(ClimateEntity):
                 SetPointStatus(new_cooling_set_point, new_heating_set_point)
             )
         except ConnectionAbortedError:
-            # pylint: disable=logging-not-lazy
             _LOGGER.warning(
-                "Could not set target temperature on %s. "
-                + "Connection not available, please reload integration to try reenabling.",
+                "Could not set target temperature on %s. Connection not available, please reload integration to try reenabling.",
                 self.name,
             )
         except ConnectionException:
@@ -237,21 +239,16 @@ class DaikinMadokaClimate(ClimateEntity):
         if self.controller.power_state.status.turn_on is False:
             return HVACAction.OFF
 
-        if (
-            self.controller.operation_mode.status.operation_mode
-            == OperationModeEnum.AUTO
-        ):
+        if self.controller.operation_mode.status.operation_mode == OperationModeEnum.AUTO:
             if self.target_temperature is None or self.current_temperature is None:
                 return None
-            # pylint: disable=no-else-return
             if self.target_temperature >= self.current_temperature:
                 return HVACAction.HEATING
-            else:
-                return HVACAction.COOLING
-        else:
-            return DAIKIN_TO_HA_CURRENT_HVAC_MODE.get(
-                self.controller.operation_mode.status.operation_mode
-            )
+            return HVACAction.COOLING
+
+        return DAIKIN_TO_HA_CURRENT_HVAC_MODE.get(
+            self.controller.operation_mode.status.operation_mode
+        )
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set HVAC mode."""
@@ -266,10 +263,8 @@ class DaikinMadokaClimate(ClimateEntity):
 
             self.async_schedule_update_ha_state()
         except ConnectionAbortedError:
-            # pylint: disable=logging-not-lazy
             _LOGGER.warning(
-                "Could not set HVAC mode on %s. "
-                + "Connection not available, please reload integration to try reenabling.",
+                "Could not set HVAC mode on %s. Connection not available, please reload integration to try reenabling.",
                 self.name,
             )
         except ConnectionException:
@@ -281,20 +276,17 @@ class DaikinMadokaClimate(ClimateEntity):
 
         if self.controller.fan_speed.status is None:
             return None
-        # pylint: disable=no-else-return
         if self.hvac_mode == HVACMode.HEAT:
             return DAIKIN_TO_HA_FAN_MODE.get(
                 self.controller.fan_speed.status.heating_fan_speed
             )
-        else:
-            return DAIKIN_TO_HA_FAN_MODE.get(
-                self.controller.fan_speed.status.cooling_fan_speed
-            )
+        return DAIKIN_TO_HA_FAN_MODE.get(
+            self.controller.fan_speed.status.cooling_fan_speed
+        )
 
     async def async_set_fan_mode(self, fan_mode):
         """Set fan mode."""
         try:
-
             await self.controller.fan_speed.update(
                 FanSpeedStatus(
                     HA_FAN_MODE_TO_DAIKIN.get(fan_mode),
@@ -302,10 +294,8 @@ class DaikinMadokaClimate(ClimateEntity):
                 )
             )
         except ConnectionAbortedError:
-            # pylint: disable=logging-not-lazy
             _LOGGER.warning(
-                "Could not set target fan mode on %s. "
-                + "Connection not available, please reload integration to try reenabling.",
+                "Could not set target fan mode on %s. Connection not available, please reload integration to try reenabling.",
                 self.name,
             )
         except ConnectionException:
@@ -324,10 +314,8 @@ class DaikinMadokaClimate(ClimateEntity):
             await self.controller.update()
 
         except ConnectionAbortedError:
-            # pylint: disable=logging-not-lazy
             _LOGGER.warning(
-                "Could not update device status for %s. "
-                + "Connection not available, please reload integration to try reenabling.",
+                "Could not update device status for %s. Connection not available, please reload integration to try reenabling.",
                 self.name,
             )
         except ConnectionException:
@@ -338,10 +326,8 @@ class DaikinMadokaClimate(ClimateEntity):
         try:
             await self.controller.power_state.update(PowerStateStatus(True))
         except ConnectionAbortedError:
-            # pylint: disable=logging-not-lazy
             _LOGGER.warning(
-                "Could not turn on %s. "
-                + "Connection not available, please reload integration to try reenabling.",
+                "Could not turn on %s. Connection not available, please reload integration to try reenabling.",
                 self.name,
             )
         except ConnectionException:
@@ -352,10 +338,8 @@ class DaikinMadokaClimate(ClimateEntity):
         try:
             await self.controller.power_state.update(PowerStateStatus(False))
         except ConnectionAbortedError:
-            # pylint: disable=logging-not-lazy
             _LOGGER.warning(
-                "Could not turn off %s. "
-                + "Connection not available, please reload integration to try reenabling.",
+                "Could not turn off %s. Connection not available, please reload integration to try reenabling.",
                 self.name,
             )
         except ConnectionException:
@@ -376,10 +360,7 @@ class DaikinMadokaClimate(ClimateEntity):
             else ""
         )
         return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.unique_id)
-            },
+            "identifiers": {(DOMAIN, self.unique_id)},
             "name": self.name,
             "manufacturer": "DAIKIN",
             "model": model,

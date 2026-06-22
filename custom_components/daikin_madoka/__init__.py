@@ -22,7 +22,7 @@ from .const import CONTROLLERS, DOMAIN
 PARALLEL_UPDATES = 0
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
 
-COMPONENT_TYPES = ["climate", "sensor"]
+COMPONENT_TYPES = ["climate", "sensor", "binary_sensor", "button"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,7 +90,9 @@ async def async_unload_entry(hass, config_entry):
     """Unload a config entry."""
     await asyncio.wait(
         [
-            hass.async_create_task(hass.config_entries.async_forward_entry_unload(config_entry, component))
+            hass.async_create_task(
+                hass.config_entries.async_forward_entry_unload(config_entry, component)
+            )
             for component in COMPONENT_TYPES
         ]
     )

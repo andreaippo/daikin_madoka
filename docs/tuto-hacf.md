@@ -16,23 +16,15 @@
 
 ## Option 1 : Intégration custom Home Assistant (Bluetooth direct)
 
-> **Attention** : La bibliothèque `pymadoka` utilise une fonction de `bleak` supprimée dans les versions récentes. Si vous obtenez une erreur d'import, passez à l'Option 2 (ESPHome).
+> ⚠️ **Problème connu** : la bibliothèque `pymadoka` utilise `from bleak import discover`, supprimé dans bleak 0.20. Les versions récentes de HA embarquent une version incompatible. Si vous obtenez `cannot import name 'discover' from 'bleak'`, passez directement à l'**Option 2**.
 
 **Prérequis** : Home Assistant avec accès Bluetooth, thermostat à moins de ~10m.
 
 ### Installation
 
-Via terminal SSH :
+**Via HACS (recommandé)** : ajoutez `https://github.com/dasimon135/daikin_madoka` comme dépôt custom de type *Intégration*, installez **Daikin Madoka**, redémarrez HA.
 
-```bash
-cd /config/custom_components
-wget https://github.com/dasimon135/daikin_madoka/archive/refs/heads/main.zip
-unzip main.zip
-cp -r daikin_madoka-main/. daikin_madoka/
-rm -rf daikin_madoka-main main.zip
-```
-
-Redémarrer Home Assistant.
+**Manuellement** : copiez le dossier `custom_components/daikin_madoka/` dans le répertoire `custom_components/` de votre config HA, redémarrez.
 
 ### Appairage Bluetooth
 
@@ -57,6 +49,24 @@ Renseigner :
 - Adresse MAC Bluetooth du BRC1H
 - Nom de l'adaptateur Bluetooth (généralement `hci0`)
 
+### Entités créées
+
+| Entité | Type | Description |
+|---|---|---|
+| `climate.*` | Climate | Contrôle principal (mode, consigne, ventilateur) |
+| `sensor.*_indoor_temperature` | Sensor | Température intérieure |
+| `sensor.*_outdoor_temperature` | Sensor | Température extérieure |
+| `binary_sensor.*_clean_filter` | Binary sensor | Alerte nettoyage filtre |
+| `button.*_reset_filter` | Button | Acquittement alerte filtre |
+
+### Docker / VM
+
+```yaml
+volumes:
+  - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+privileged: true
+```
+
 ---
 
 ## Option 2 : Proxy ESP32 via ESPHome (recommandé)
@@ -72,10 +82,7 @@ Renseigner :
 - M5Stack Atom S3 Lite (ESP32-S3)
 - ESP32 DevKit générique
 
-### Prérequis
-
-- ESPHome 2025.10+
-- ESP32 ou ESP32-S3
+**Prérequis** : ESPHome 2025.10+
 
 ### Configuration pour ESP32-S3 (ex: M5Stack Atom S3 Lite)
 
@@ -117,20 +124,24 @@ api:
 ota:
   - platform: esphome
 
-# IMPORTANT: affichage du code de jumelage MITM
+# OBLIGATOIRE sur ESP32-S3 pour le pairing MITM
 esp32_ble:
   io_capability: display_yes_no
 
 external_components:
-  - source: github://dasimon135/daikin_madoka@main
-    components: [ madoka ]
+  - source:
+      type: git
+      url: https://github.com/dasimon135/daikin_madoka
+      ref: v2.1.1
+      path: esphome_components
+    components: [madoka]
 
 esp32_ble_tracker:
   id: ble_tracker
-  max_connections: 2
-
-bluetooth_proxy:
-  active: false
+  scan_parameters:
+    interval: 320ms
+    window: 30ms
+    active: true
 
 ble_client:
   - mac_address: "XX:XX:XX:XX:XX:XX"  # Remplacez par votre adresse MAC
@@ -166,30 +177,47 @@ climate:
 ```yaml
 esphome:
   name: madoka-proxy
+  friendly_name: Madoka Proxy
 
 esp32:
   board: m5stack-atom
   framework:
-    type: arduino
+    type: esp-idf
 
-# ... (wifi, api, ota identiques)
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
 
 external_components:
-  - source: github://dasimon135/daikin_madoka@main
-    components: [ madoka ]
+  - source:
+      type: git
+      url: https://github.com/dasimon135/daikin_madoka
+      ref: v2.1.1
+      path: esphome_components
+    components: [madoka]
 
 esp32_ble_tracker:
   id: ble_tracker
-  max_connections: 2
-
-bluetooth_proxy:
-  active: false
+  scan_parameters:
+    interval: 320ms
+    window: 30ms
+    active: true
 
 ble_client:
   - mac_address: "XX:XX:XX:XX:XX:XX"
     id: madoka_1
     on_disconnect:
       then:
+        - delay: 10s
         - ble_client.connect: madoka_1
 
 climate:
@@ -197,6 +225,16 @@ climate:
     name: "Madoka"
     ble_client_id: madoka_1
     update_interval: 15s
+    outdoor_temperature:
+      name: "Madoka Temp. Exterieure"
+    clean_filter:
+      name: "Madoka Filtre a Nettoyer"
+    firmware_version:
+      name: "Madoka Firmware"
+    eye_brightness:
+      name: "Madoka Luminosite LED"
+    reset_filter:
+      name: "Madoka Reset Filtre"
 ```
 
 ### Processus d'appairage ESP32 ↔ Madoka
@@ -220,6 +258,22 @@ Chaque thermostat expose :
 | `number.madoka_*_luminosite_led` | Number | Luminosité LED façade (0–19) |
 | `button.madoka_*_reset_filtre` | Button | Acquittement alerte filtre |
 
+### Pinning de version
+
+Utilisez toujours un tag git stable — ne pointez jamais sur `main` en production :
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/dasimon135/daikin_madoka
+      ref: v2.1.1        # remplacer par le tag le plus récent
+      path: esphome_components
+    components: [madoka]
+```
+
+Consultez le [CHANGELOG](../CHANGELOG.md) pour les versions disponibles.
+
 ---
 
 ## Ré-appairage avec le téléphone
@@ -231,7 +285,10 @@ Chaque thermostat expose :
 ```yaml
 esp32_ble_tracker:
   id: ble_tracker   # ← requis
-  max_connections: 2
+  scan_parameters:
+    interval: 320ms
+    window: 30ms
+    active: true
 
 switch:
   - platform: template
@@ -276,11 +333,12 @@ script:
 
 | Erreur | Cause | Solution |
 |---|---|---|
-| `bleak import error` | pymadoka incompatible avec bleak récent | Utiliser Option 2 (ESPHome) |
+| `cannot import name 'discover' from 'bleak'` | pymadoka incompatible avec bleak récent | Utiliser Option 2 (ESPHome) |
 | `Invalid handler specified` | Mauvais chemin d'installation ou HA non redémarré | Vérifier `/config/custom_components/daikin_madoka/`, redémarrer HA |
 | Thermostat non trouvé | Connecté à l'appli mobile ou non appairé | Supprimer l'appairage sur le Madoka, re-scanner |
 | Connexion instable | Signal BLE faible | Rapprocher l'ESP32 du thermostat |
-| Code d'appairage non affiché | `io_capability` manquant | Ajouter `esp32_ble: io_capability: display_yes_no` |
+| Code d'appairage non affiché | `io_capability` manquant | Ajouter `esp32_ble: io_capability: display_yes_no` (ESP32-S3) |
+| `warned took a long time (400ms+)` | Normal — protocole BLE Madoka lent par nature | Ignorer, pas d'impact fonctionnel |
 
 ---
 
