@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.2.0 - Juin 2026
+
+### HA Integration
+
+- **Nouvelle entité** : `binary_sensor` pour l'alerte filtre (`device_class: problem`)
+- **Nouvelle entité** : `button` pour réinitialiser le compteur filtre (`entity_category: diagnostic`)
+- **Restructuration** : fichiers déplacés vers `custom_components/daikin_madoka/` (standard HACS — installation transparente pour les utilisateurs existants)
+- **Parité ESPHome** : l'intégration HA directe expose désormais les mêmes entités filtre que le composant ESPHome
+- Version bumped to 2.2.0
+
+No ESPHome changes. ESPHome users should keep `ref: v2.1.1`.
+
+---
+
 ## v2.1.1 - Avril 2026
 
 ### Fixes
