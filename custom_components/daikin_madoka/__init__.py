@@ -60,21 +60,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     controllers = {}
     for device in entry.data[CONF_DEVICES]:
         if entry.data[CONF_FORCE_UPDATE]:
-            await force_device_disconnect(device)
+            try:
+                await force_device_disconnect(device)
+            except Exception:
+                _LOGGER.debug("Forced disconnect failed for %s, skipping...", device)
         controllers[device] = Controller(device, adapter=entry.data[CONF_DEVICE])
 
-    await discover_devices(
-        adapter=entry.data[CONF_DEVICE], timeout=entry.data[CONF_SCAN_INTERVAL]
-    )
+    # Riduce l'impatto della scansione iniziale massiva per evitare di saturare l'adattatore hci0
+    try:
+        _LOGGER.debug("Starting initial BLE discovery fallback...")
+        await asyncio.wait_for(
+            discover_devices(
+                adapter=entry.data[CONF_DEVICE], timeout=2
+            ), 
+            timeout=5
+        )
+    except Exception:
+        _LOGGER.warning("Initial BLE discovery timed out or skipped, trying to connect directly...")
 
+    # Avvia le connessioni introducendo una pausa sequenziale (pacing)
+    # per evitare il concurrency lock sul demone BlueZ/DBus
     for device, controller in controllers.items():
         try:
-            await asyncio.wait_for(controller.start(), timeout=10)
-        except ConnectionAbortedError as connection_aborted_error:
+            _LOGGER.info("Connecting to Madoka device: %s", device)
+            await asyncio.wait_for(controller.start(), timeout=15)
+            
+            # Una pausa di 1.5 secondi permette al chip Bluetooth di completare 
+            # l'handshake e stabilizzare la sessione prima di aggredire il dispositivo successivo
+            await asyncio.sleep(1.5)
+        except Exception as connection_error:
             _LOGGER.error(
                 "Could not connect to device %s: %s",
                 device,
-                str(connection_aborted_error),
+                str(connection_error),
             )
 
     hass.data.setdefault(DOMAIN, {})
@@ -96,6 +114,3 @@ async def async_unload_entry(hass, config_entry):
             for component in COMPONENT_TYPES
         ]
     )
-    hass.data[DOMAIN].pop(config_entry.entry_id)
-
-    return True
