@@ -2,6 +2,7 @@
 
 DOMAIN = "daikin_madoka"
 CONF_MAC = "address"
+CONF_FRIENDLY_NAME = "friendly_name"
 
 CONTROLLERS = "controllers"
 
