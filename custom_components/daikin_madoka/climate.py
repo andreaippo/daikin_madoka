@@ -348,17 +348,9 @@ class DaikinMadokaClimate(ClimateEntity):
     @property
     def device_info(self):
         """Return a device description for device registry."""
-
-        model = (
-            ("BRC1H" + self.dev_info["Model Number String"])
-            if "Model Number String" in self.dev_info
-            else ""
-        )
-        sw_version = (
-            self.dev_info["Software Revision String"]
-            if "Software Revision String" in self.dev_info
-            else ""
-        )
+        dev = self.dev_info or {}
+        model = ("BRC1H" + dev["Model Number String"]) if "Model Number String" in dev else ""
+        sw_version = dev.get("Software Revision String", "")
         return {
             "identifiers": {(DOMAIN, self.unique_id)},
             "name": self.name,
