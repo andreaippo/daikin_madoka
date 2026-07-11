@@ -1,85 +1,78 @@
-"""Platform for the Daikin AC."""
+"""The Daikin Madoka integration."""
+
+from __future__ import annotations
+
 import asyncio
-from datetime import timedelta
 import logging
 
 from pymadoka import Controller, force_device_disconnect
-import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_DEVICE,
-    CONF_FORCE_UPDATE,
-)
-import homeassistant.helpers.config_validation as cv
+from homeassistant.const import CONF_DEVICE, CONF_FORCE_UPDATE
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
-from . import config_flow  # noqa: F401
-from .const import CONTROLLERS, DOMAIN, CONF_MAC, CONF_FRIENDLY_NAME
-
-PARALLEL_UPDATES = 0
-MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
-
-COMPONENT_TYPES = ["climate", "sensor", "binary_sensor", "button"]
+from .const import (
+    CONF_FRIENDLY_NAME,
+    CONF_MAC,
+    CONNECT_TIMEOUT,
+    DEFAULT_ADAPTER,
+    DOMAIN,
+    PLATFORMS,
+)
+from .coordinator import MadokaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_SCHEMA = vol.Schema(
-    vol.All(
-        cv.deprecated(DOMAIN),
-        {
-            DOMAIN: vol.Schema(
-                {
-                    vol.Required(CONF_MAC): cv.string,
-                    vol.Optional(CONF_FRIENDLY_NAME, default=""): cv.string,
-                    vol.Optional(CONF_FORCE_UPDATE, default=True): bool,
-                    vol.Optional(CONF_DEVICE, default="hci0"): cv.string,
-                }
-            )
-        },
-    ),
-    extra=vol.ALLOW_EXTRA,
-)
 
-
-async def async_setup(hass, config):
-    """Set up the component."""
-    hass.data.setdefault(DOMAIN, {})
-    return True
-
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a single Madoka thermostat from a config entry."""
+    options = {**entry.data, **entry.options}
     mac = entry.data[CONF_MAC]
-    adapter = entry.data.get(CONF_DEVICE, "hci0")
-    friendly_name = entry.data.get(CONF_FRIENDLY_NAME) or None
+    adapter = options.get(CONF_DEVICE, DEFAULT_ADAPTER)
+    friendly_name = options.get(CONF_FRIENDLY_NAME) or None
 
-    if entry.data.get(CONF_FORCE_UPDATE, True):
+    if options.get(CONF_FORCE_UPDATE, True):
         try:
             await force_device_disconnect(mac)
-        except Exception:
-            _LOGGER.debug("Forced disconnect failed for %s, skipping...", mac)
+        except Exception as err:  # noqa: BLE001 - best-effort cleanup of a stale link
+            _LOGGER.debug("Forced disconnect failed for %s, skipping: %s", mac, err)
 
     controller = Controller(mac, adapter=adapter, hass=hass, name=friendly_name)
 
     try:
-        _LOGGER.info("Connecting to Madoka device: %s", mac)
-        await asyncio.wait_for(controller.start(), timeout=15)
-    except Exception as connection_error:
-        _LOGGER.error(
-            "Could not connect to device %s: %s",
-            mac,
-            str(connection_error),
-        )
+        _LOGGER.debug("Connecting to Madoka device: %s", mac)
+        await asyncio.wait_for(controller.start(), timeout=CONNECT_TIMEOUT)
+    except Exception as err:
+        try:
+            await controller.stop()
+        except Exception:  # noqa: BLE001 - stop is best-effort on a failed connect
+            pass
+        raise ConfigEntryNotReady(f"Could not connect to device {mac}: {err}") from err
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {CONTROLLERS: {mac: controller}}
+    coordinator = MadokaCoordinator(hass, entry, controller)
+    await coordinator.async_config_entry_first_refresh()
 
-    await hass.config_entries.async_forward_entry_setups(entry, COMPONENT_TYPES)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
 
 
-async def async_unload_entry(hass, config_entry):
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(config_entry, COMPONENT_TYPES)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        coordinator: MadokaCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        try:
+            await coordinator.controller.stop()
+        except Exception as err:  # noqa: BLE001 - always release the BLE connection
+            _LOGGER.debug("Error stopping controller for %s: %s", coordinator.address, err)
+    return unload_ok
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when its options change."""
+    await hass.config_entries.async_reload(entry.entry_id)

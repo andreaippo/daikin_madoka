@@ -1,72 +1,59 @@
 """Support for Daikin Madoka buttons."""
 
-from homeassistant.components.button import ButtonEntity
-from homeassistant.const import EntityCategory
+from __future__ import annotations
 
-from . import DOMAIN
-from .const import CONTROLLERS
+import logging
 
-from pymadoka import Controller
-from pymadoka.feature import ConnectionException, ConnectionStatus
+from pymadoka.feature import ConnectionException
 from pymadoka.features.clean_filter import ResetCleanFilterTimerStatus
 
+from homeassistant.components.button import ButtonEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Daikin Madoka buttons based on config_entry."""
-    entities = []
-    for controller in hass.data[DOMAIN][entry.entry_id][CONTROLLERS].values():
-        entities.append(MadokaResetFilterButton(controller))
-    async_add_entities(entities)
+from .const import DOMAIN
+from .coordinator import MadokaCoordinator
+from .entity import MadokaEntity
+
+_LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 
-class MadokaResetFilterButton(ButtonEntity):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up Daikin Madoka buttons based on a config entry."""
+    coordinator: MadokaCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([MadokaResetFilterButton(coordinator)])
+
+
+class MadokaResetFilterButton(MadokaEntity, ButtonEntity):
     """Button to reset the clean filter timer."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:air-filter"
+    _attr_name = "Reset Filter"
 
-    def __init__(self, controller: Controller) -> None:
-        self.controller = controller
-
-    @property
-    def available(self):
-        return self.controller.connection.connection_status is ConnectionStatus.CONNECTED
-
-    @property
-    def unique_id(self):
-        return f"{self.controller.connection.address}_reset_filter"
-
-    @property
-    def name(self):
-        base_name = (
-            self.controller.connection.name
-            if self.controller.connection.name is not None
-            else self.controller.connection.address
-        )
-        return f"{base_name} Reset Filter"
-
-    @property
-    def icon(self):
-        return "mdi:air-filter"
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self.controller.connection.address)},
-            "name": (
-                self.controller.connection.name
-                if self.controller.connection.name is not None
-                else self.controller.connection.address
-            ),
-            "manufacturer": "DAIKIN",
-            "model": "BRC1H",
-        }
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
+        """Initialize the button."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_reset_filter"
 
     async def async_press(self) -> None:
+        """Reset the clean filter timer."""
         try:
             await self.controller.reset_clean_filter_timer.update(
                 ResetCleanFilterTimerStatus()
             )
-        except ConnectionAbortedError:
-            pass
-        except ConnectionException:
-            pass
+            await self.coordinator.async_request_refresh()
+        except (ConnectionAbortedError, ConnectionException) as err:
+            _LOGGER.debug(
+                "Could not reset filter timer on %s: %s",
+                self.coordinator.device_name,
+                err,
+            )

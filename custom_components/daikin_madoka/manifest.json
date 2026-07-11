@@ -6,5 +6,7 @@
   "requirements": ["pymadoka @ git+https://github.com/andreaippo/pymadoka.git@3750c84eaa83199fd2014accd133d2c3757d3ed0"],
   "codeowners": ["@andreaippo"],
   "iot_class": "local_polling",
-  "version": "2.2.16"
+  "integration_type": "device",
+  "loggers": ["pymadoka", "bleak"],
+  "version": "2.3.0"
 }

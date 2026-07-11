@@ -1,9 +1,12 @@
 """Support for the Daikin Madoka HVAC."""
+
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 from pymadoka import (
     ConnectionException,
-    Controller,
     FanSpeedEnum,
     FanSpeedStatus,
     OperationModeEnum,
@@ -11,7 +14,7 @@ from pymadoka import (
     PowerStateStatus,
     SetPointStatus,
 )
-from pymadoka.connection import ConnectionStatus
+
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -24,12 +27,18 @@ from homeassistant.components.climate.const import (
     FAN_LOW,
     FAN_MEDIUM,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import DOMAIN
-from .const import CONTROLLERS, MAX_TEMP, MIN_TEMP
+from .const import DOMAIN, MAX_TEMP, MIN_TEMP, TARGET_TEMP_STEP
+from .coordinator import MadokaCoordinator
+from .entity import MadokaEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 HA_MODE_TO_DAIKIN = {
     HVACMode.FAN_ONLY: OperationModeEnum.FAN,
@@ -69,108 +78,56 @@ DAIKIN_TO_HA_CURRENT_HVAC_MODE = {
     OperationModeEnum.HEAT: HVACAction.HEATING,
 }
 
-DATA = "data"
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up Daikin climate based on a config entry."""
+    coordinator: MadokaCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([DaikinMadokaClimate(coordinator)])
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Daikin climate based on config_entry."""
+class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
+    """Representation of a Daikin Madoka HVAC."""
 
-    if entry.entry_id in hass.data[DOMAIN]:
-        entities = []
-        for controller in hass.data[DOMAIN][entry.entry_id][CONTROLLERS].values():
-            try:
-                entity = DaikinMadokaClimate(controller)
-                entities.append(entity)
-                await entity.controller.update()
-            except ConnectionAbortedError:
-                pass
-            except ConnectionException:
-                pass
+    _attr_name = None
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_target_temperature_step = TARGET_TEMP_STEP
+    _attr_min_temp = MIN_TEMP
+    _attr_max_temp = MAX_TEMP
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.FAN_MODE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
+    )
+    _attr_hvac_modes = list(HA_MODE_TO_DAIKIN)
+    _attr_fan_modes = list(HA_FAN_MODE_TO_DAIKIN)
 
-        async_add_entities(entities, update_before_add=True)
-
-
-class DaikinMadokaClimate(ClimateEntity):
-    """Representation of a Daikin HVAC."""
-
-    def __init__(self, controller: Controller):
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
         """Initialize the climate device."""
-        self.controller = controller
-        self.dev_info = None
+        super().__init__(coordinator)
+        self._attr_unique_id = coordinator.address
 
     @property
-    def supported_features(self):
-        """Return the list of supported features."""
-        return (
-            ClimateEntityFeature.TARGET_TEMPERATURE
-            | ClimateEntityFeature.FAN_MODE
-            | ClimateEntityFeature.TURN_ON
-            | ClimateEntityFeature.TURN_OFF
-        )
-
-    @property
-    def available(self):
-        """Return the availability."""
-        return self.controller.connection.connection_status == ConnectionStatus.CONNECTED
-
-    @property
-    def name(self):
-        """Return the name of the thermostat, if any."""
-        return (
-            self.controller.connection.name
-            if self.controller.connection.name is not None
-            else self.controller.connection.address
-        )
-
-    @property
-    def unique_id(self):
-        """Return a unique ID."""
-        return self.controller.connection.address
-
-    @property
-    def temperature_unit(self):
-        """Return the unit of measurement which this thermostat uses."""
-        return UnitOfTemperature.CELSIUS
-
-    @property
-    def current_temperature(self):
-        """Return the current temperature."""
+    def current_temperature(self) -> float | None:
+        """Return the current indoor temperature."""
         if self.controller.temperatures.status is None:
             return None
-
         return self.controller.temperatures.status.indoor
 
     @property
-    def target_temperature(self):
+    def target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
-
         if self.controller.set_point.status is None:
             return None
-
-        value = None
-
         if self.hvac_mode == HVACMode.HEAT:
-            value = self.controller.set_point.status.heating_set_point
-        else:
-            value = self.controller.set_point.status.cooling_set_point
-        return value
+            return self.controller.set_point.status.heating_set_point
+        return self.controller.set_point.status.cooling_set_point
 
-    @property
-    def target_temperature_step(self):
-        """Return the supported step of target temperature."""
-        return 1
-
-    @property
-    def min_temp(self):
-        """Return the minimum temperature."""
-        return MIN_TEMP
-
-    @property
-    def max_temp(self):
-        """Return the maximum temperature."""
-        return MAX_TEMP
-
-    async def async_set_temperature(self, **kwargs):
+    async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         try:
             if self.controller.set_point.status is None:
@@ -198,48 +155,37 @@ class DaikinMadokaClimate(ClimateEntity):
             await self.controller.set_point.update(
                 SetPointStatus(new_cooling_set_point, new_heating_set_point)
             )
-        except ConnectionAbortedError:
-            _LOGGER.warning(
-                "Could not set target temperature on %s. Connection not available, please reload integration to try reenabling.",
-                self.name,
-            )
-        except ConnectionException:
-            pass
+            await self.coordinator.async_request_refresh()
+        except (ConnectionAbortedError, ConnectionException) as err:
+            _LOGGER.debug("Could not set target temperature on %s: %s", self.coordinator.device_name, err)
 
     @property
-    def hvac_mode(self):
+    def hvac_mode(self) -> HVACMode | None:
         """Return current operation ie. heat, cool, idle."""
-
         if self.controller.power_state.status is None:
             return None
         if self.controller.operation_mode.status is None:
             return None
-
         if self.controller.power_state.status.turn_on is False:
             return HVACMode.OFF
-
         return DAIKIN_TO_HA_MODE.get(
             self.controller.operation_mode.status.operation_mode
         )
 
     @property
-    def hvac_modes(self):
-        """Return the list of available operation modes."""
-        return list(HA_MODE_TO_DAIKIN)
-
-    @property
-    def hvac_action(self):
+    def hvac_action(self) -> HVACAction | None:
         """Return the HVAC current action."""
-
         if self.controller.power_state.status is None:
             return None
         if self.controller.operation_mode.status is None:
             return None
-
         if self.controller.power_state.status.turn_on is False:
             return HVACAction.OFF
 
-        if self.controller.operation_mode.status.operation_mode == OperationModeEnum.AUTO:
+        if (
+            self.controller.operation_mode.status.operation_mode
+            == OperationModeEnum.AUTO
+        ):
             if self.target_temperature is None or self.current_temperature is None:
                 return None
             if self.target_temperature >= self.current_temperature:
@@ -250,7 +196,7 @@ class DaikinMadokaClimate(ClimateEntity):
             self.controller.operation_mode.status.operation_mode
         )
 
-    async def async_set_hvac_mode(self, hvac_mode):
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode."""
         try:
             if hvac_mode != HVACMode.OFF:
@@ -260,20 +206,13 @@ class DaikinMadokaClimate(ClimateEntity):
             await self.controller.power_state.update(
                 PowerStateStatus(hvac_mode != HVACMode.OFF)
             )
-
-            self.async_schedule_update_ha_state()
-        except ConnectionAbortedError:
-            _LOGGER.warning(
-                "Could not set HVAC mode on %s. Connection not available, please reload integration to try reenabling.",
-                self.name,
-            )
-        except ConnectionException:
-            pass
+            await self.coordinator.async_request_refresh()
+        except (ConnectionAbortedError, ConnectionException) as err:
+            _LOGGER.debug("Could not set HVAC mode on %s: %s", self.coordinator.device_name, err)
 
     @property
-    def fan_mode(self):
+    def fan_mode(self) -> str | None:
         """Return the fan setting."""
-
         if self.controller.fan_speed.status is None:
             return None
         if self.hvac_mode == HVACMode.HEAT:
@@ -284,7 +223,7 @@ class DaikinMadokaClimate(ClimateEntity):
             self.controller.fan_speed.status.cooling_fan_speed
         )
 
-    async def async_set_fan_mode(self, fan_mode):
+    async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
         try:
             await self.controller.fan_speed.update(
@@ -293,69 +232,22 @@ class DaikinMadokaClimate(ClimateEntity):
                     HA_FAN_MODE_TO_DAIKIN.get(fan_mode),
                 )
             )
-        except ConnectionAbortedError:
-            _LOGGER.warning(
-                "Could not set target fan mode on %s. Connection not available, please reload integration to try reenabling.",
-                self.name,
-            )
-        except ConnectionException:
-            pass
+            await self.coordinator.async_request_refresh()
+        except (ConnectionAbortedError, ConnectionException) as err:
+            _LOGGER.debug("Could not set fan mode on %s: %s", self.coordinator.device_name, err)
 
-    @property
-    def fan_modes(self):
-        """List of available fan modes."""
-        return list(HA_FAN_MODE_TO_DAIKIN)
-
-    async def async_update(self):
-        """Retrieve latest state."""
-
-        try:
-            self.dev_info = await self.controller.read_info()
-            await self.controller.update()
-
-        except ConnectionAbortedError:
-            _LOGGER.warning(
-                "Could not update device status for %s. Connection not available, please reload integration to try reenabling.",
-                self.name,
-            )
-        except ConnectionException:
-            pass
-
-    async def async_turn_on(self):
+    async def async_turn_on(self) -> None:
         """Turn device on."""
         try:
             await self.controller.power_state.update(PowerStateStatus(True))
-        except ConnectionAbortedError:
-            _LOGGER.warning(
-                "Could not turn on %s. Connection not available, please reload integration to try reenabling.",
-                self.name,
-            )
-        except ConnectionException:
-            pass
+            await self.coordinator.async_request_refresh()
+        except (ConnectionAbortedError, ConnectionException) as err:
+            _LOGGER.debug("Could not turn on %s: %s", self.coordinator.device_name, err)
 
-    async def async_turn_off(self):
+    async def async_turn_off(self) -> None:
         """Turn device off."""
         try:
             await self.controller.power_state.update(PowerStateStatus(False))
-        except ConnectionAbortedError:
-            _LOGGER.warning(
-                "Could not turn off %s. Connection not available, please reload integration to try reenabling.",
-                self.name,
-            )
-        except ConnectionException:
-            pass
-
-    @property
-    def device_info(self):
-        """Return a device description for device registry."""
-        dev = self.dev_info or {}
-        model = ("BRC1H" + dev["Model Number String"]) if "Model Number String" in dev else ""
-        sw_version = dev.get("Software Revision String", "")
-        return {
-            "identifiers": {(DOMAIN, self.unique_id)},
-            "name": self.name,
-            "manufacturer": "DAIKIN",
-            "model": model,
-            "sw_version": sw_version,
-            "via_device": (DOMAIN, self.unique_id),
-        }
+            await self.coordinator.async_request_refresh()
+        except (ConnectionAbortedError, ConnectionException) as err:
+            _LOGGER.debug("Could not turn off %s: %s", self.coordinator.device_name, err)

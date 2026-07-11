@@ -18,5 +18,17 @@
         "title": "Configure Daikin Madoka"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "friendly_name": "Friendly name (optional, e.g. 'Living room')",
+          "force_update": "Force disconnect from BRC1H before connecting (recommended)",
+          "device": "Bluetooth adapter name (run 'hcitool dev' to list adapters)"
+        },
+        "title": "Daikin Madoka options"
+      }
+    }
   }
 }
