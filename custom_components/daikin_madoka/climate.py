@@ -127,6 +127,25 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
             return self.controller.set_point.status.heating_set_point
         return self.controller.set_point.status.cooling_set_point
 
+    async def _publish_written_state(self) -> None:
+        """Publish the state the device just confirmed, then re-read the device.
+
+        pymadoka stores the written status on the feature as soon as the device
+        acknowledges the command, so the entity properties already return the new
+        values. Publishing them right away matters: a coordinator refresh is
+        debounced by several seconds, and until it lands the frontend still shows
+        the previous value - a user acting again in that window (e.g. switching
+        back to the mode the UI still displays) produces no service call at all,
+        because the frontend treats it as a no-op.
+
+        Every entity of this device is refreshed, not just this one, since a
+        single command changes several of them (mode, power, set point). The
+        coordinator refresh still runs afterwards so that a command the device
+        acknowledges but does not apply is eventually corrected by a real read.
+        """
+        self.coordinator.async_update_listeners()
+        await self.coordinator.async_request_refresh()
+
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         try:
@@ -155,7 +174,7 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
             await self.controller.set_point.update(
                 SetPointStatus(new_cooling_set_point, new_heating_set_point)
             )
-            await self.coordinator.async_request_refresh()
+            await self._publish_written_state()
         except (ConnectionAbortedError, ConnectionException) as err:
             _LOGGER.debug("Could not set target temperature on %s: %s", self.coordinator.device_name, err)
 
@@ -206,7 +225,7 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
             await self.controller.power_state.update(
                 PowerStateStatus(hvac_mode != HVACMode.OFF)
             )
-            await self.coordinator.async_request_refresh()
+            await self._publish_written_state()
         except (ConnectionAbortedError, ConnectionException) as err:
             _LOGGER.debug("Could not set HVAC mode on %s: %s", self.coordinator.device_name, err)
 
@@ -232,7 +251,7 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
                     HA_FAN_MODE_TO_DAIKIN.get(fan_mode),
                 )
             )
-            await self.coordinator.async_request_refresh()
+            await self._publish_written_state()
         except (ConnectionAbortedError, ConnectionException) as err:
             _LOGGER.debug("Could not set fan mode on %s: %s", self.coordinator.device_name, err)
 
@@ -240,7 +259,7 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
         """Turn device on."""
         try:
             await self.controller.power_state.update(PowerStateStatus(True))
-            await self.coordinator.async_request_refresh()
+            await self._publish_written_state()
         except (ConnectionAbortedError, ConnectionException) as err:
             _LOGGER.debug("Could not turn on %s: %s", self.coordinator.device_name, err)
 
@@ -248,6 +267,6 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
         """Turn device off."""
         try:
             await self.controller.power_state.update(PowerStateStatus(False))
-            await self.coordinator.async_request_refresh()
+            await self._publish_written_state()
         except (ConnectionAbortedError, ConnectionException) as err:
             _LOGGER.debug("Could not turn off %s: %s", self.coordinator.device_name, err)
