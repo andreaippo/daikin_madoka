@@ -119,11 +119,22 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
         return self.controller.temperatures.status.indoor
 
     @property
+    def _targets_heating_set_point(self) -> bool:
+        """Whether the heating set point is the one this entity reads and writes.
+
+        The device keeps a set point per mode and, when configured for two
+        distinct ones, memorizes them separately. Reads and writes must agree on
+        which of the two is in play, otherwise editing the temperature would
+        change a value the UI is not showing.
+        """
+        return self.hvac_mode == HVACMode.HEAT
+
+    @property
     def target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
         if self.controller.set_point.status is None:
             return None
-        if self.hvac_mode == HVACMode.HEAT:
+        if self._targets_heating_set_point:
             return self.controller.set_point.status.heating_set_point
         return self.controller.set_point.status.cooling_set_point
 
@@ -158,18 +169,16 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
             if target_temperature is None:
                 return
 
+            # Only the set point this entity exposes is written: the other one
+            # keeps the value the device memorized for its own mode. Writing both
+            # would collapse a dual set-point configuration to a single value as
+            # soon as the temperature is changed outside heating and cooling.
             new_cooling_set_point = self.controller.set_point.status.cooling_set_point
             new_heating_set_point = self.controller.set_point.status.heating_set_point
-            if (
-                self.controller.operation_mode.status.operation_mode
-                != OperationModeEnum.HEAT
-            ):
-                new_cooling_set_point = round(target_temperature)
-            if (
-                self.controller.operation_mode.status.operation_mode
-                != OperationModeEnum.COOL
-            ):
+            if self._targets_heating_set_point:
                 new_heating_set_point = round(target_temperature)
+            else:
+                new_cooling_set_point = round(target_temperature)
 
             await self.controller.set_point.update(
                 SetPointStatus(new_cooling_set_point, new_heating_set_point)
