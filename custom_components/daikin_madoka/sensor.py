@@ -28,8 +28,6 @@ async def async_setup_entry(
         [
             MadokaIndoorSensor(coordinator),
             MadokaOutdoorSensor(coordinator),
-            MadokaDisplayBrightnessSensor(coordinator),
-            MadokaDisplayContrastSensor(coordinator),
             MadokaDisplayParametersSensor(coordinator),
         ]
     )
@@ -81,9 +79,8 @@ class MadokaOutdoorSensor(MadokaSensor):
 class MadokaDisplaySensor(MadokaEntity, SensorEntity):
     """Base representation of a read-only view on the on-board display settings.
 
-    These sensors exist to check the mapping recovered from the capture of the
-    official app against what the device reports: change a setting from the
-    app, then read the value here. Nothing is ever written back.
+    The levels the device exposes are writable and live on the number platform;
+    what stays here is what can only be read.
     """
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -105,72 +102,6 @@ class MadokaDisplaySensor(MadokaEntity, SensorEntity):
         if display is None:
             return None
         return display.status
-
-
-class MadokaDisplayLevelSensor(MadokaDisplaySensor):
-    """A display level reported on the device's own 0-19 scale.
-
-    The official app shows these settings on a 0-100 scale, so both plausible
-    conversions are published as attributes: which one the app uses can be told
-    by setting a value there and comparing.
-    """
-
-    _attr_native_unit_of_measurement = "step"
-    _attr_icon = "mdi:brightness-6"
-
-    WIRE_MAX = 19
-
-    @property
-    def raw_value(self) -> int | None:
-        """Return the value read from the device. Overridden by subclasses."""
-        raise NotImplementedError
-
-    @property
-    def native_value(self) -> int | None:
-        """Return the level as the device reports it."""
-        return self.raw_value
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return the candidate conversions to the app's 0-100 scale."""
-        value = self.raw_value
-        if value is None:
-            return None
-        return {
-            "raw": value,
-            "percent_full_scale": round(value * 100 / self.WIRE_MAX),
-            "percent_five_per_step": value * 5,
-        }
-
-
-class MadokaDisplayBrightnessSensor(MadokaDisplayLevelSensor):
-    """Brightness of the on-board display (parameter 0x32)."""
-
-    def __init__(self, coordinator: MadokaCoordinator) -> None:
-        """Initialize the brightness sensor."""
-        super().__init__(coordinator, "display_brightness", "Display Brightness")
-
-    @property
-    def raw_value(self) -> int | None:
-        """Return the brightness read from the device."""
-        status = self.display_status
-        return None if status is None else status.brightness
-
-
-class MadokaDisplayContrastSensor(MadokaDisplayLevelSensor):
-    """Contrast of the on-board display (parameter 0x31)."""
-
-    _attr_icon = "mdi:contrast-circle"
-
-    def __init__(self, coordinator: MadokaCoordinator) -> None:
-        """Initialize the contrast sensor."""
-        super().__init__(coordinator, "display_contrast", "Display Contrast")
-
-    @property
-    def raw_value(self) -> int | None:
-        """Return the contrast read from the device."""
-        status = self.display_status
-        return None if status is None else status.contrast
 
 
 class MadokaDisplayParametersSensor(MadokaDisplaySensor):
