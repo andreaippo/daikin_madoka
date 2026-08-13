@@ -156,6 +156,13 @@ class MadokaRingModeSensor(MadokaEntity, SensorEntity):
 
     OPTIONS = {0: "normal", 1: "hotel_1", 2: "hotel_2"}
 
+    # What each behaviour does, as the official app documents it.
+    BEHAVIOURS = {
+        "normal": "The ring blinks on an error and shows the status while the screen is dimmed",
+        "hotel_1": "The ring does not blink on an error",
+        "hotel_2": "The ring does not blink on an error and shows no status while the screen is dimmed",
+    }
+
     def __init__(self, coordinator: MadokaCoordinator) -> None:
         """Initialize the ring mode sensor."""
         super().__init__(coordinator)
@@ -184,7 +191,9 @@ class MadokaRingModeSensor(MadokaEntity, SensorEntity):
         status = self.ring_mode_status
         if status is None or status.values is None:
             return None
+        option = self.native_value
         return {
+            "behaviour": self.BEHAVIOURS.get(option),
             "mode_index": status.MODE_INDEX,
             "values": status.values.hex(),
             "minimum": None if status.minimum is None else status.minimum.hex(),
