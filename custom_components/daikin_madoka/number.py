@@ -40,6 +40,7 @@ async def async_setup_entry(
         [
             MadokaDisplayBrightnessNumber(coordinator),
             MadokaDisplayContrastNumber(coordinator),
+            MadokaRingBrightnessNumber(coordinator),
         ]
     )
 
@@ -147,3 +148,23 @@ class MadokaDisplayContrastNumber(MadokaDisplayLevelNumber):
     def build_update(self, value: int) -> DisplayStatus:
         """See base class."""
         return DisplayStatus(contrast=value)
+
+
+class MadokaRingBrightnessNumber(MadokaDisplayLevelNumber):
+    """Brightness of the status ring around the display (parameter 0x33)."""
+
+    _attr_icon = "mdi:circle-outline"
+
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
+        """Initialize the ring brightness entity."""
+        super().__init__(coordinator, "ring_brightness_level", "Ring Brightness")
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the ring brightness read from the device."""
+        status = self.display_status
+        return None if status is None else getattr(status, "ring_brightness", None)
+
+    def build_update(self, value: int) -> DisplayStatus:
+        """See base class."""
+        return DisplayStatus(ring_brightness=value)

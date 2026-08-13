@@ -3,10 +3,10 @@
   "name": "Daikin Madoka",
   "config_flow": true,
   "documentation": "https://github.com/andreaippo/daikin_madoka",
-  "requirements": ["pymadoka @ git+https://github.com/andreaippo/pymadoka.git@b7a5681f2cccb90adb265c81aafd4d6e56860ec9"],
+  "requirements": ["pymadoka @ git+https://github.com/andreaippo/pymadoka.git@c9ab549f31db7897a46f90f8e9eabe5c5a2769f5"],
   "codeowners": ["@andreaippo"],
   "iot_class": "local_polling",
   "integration_type": "device",
   "loggers": ["pymadoka", "bleak"],
-  "version": "2.5.0"
+  "version": "2.6.0"
 }
