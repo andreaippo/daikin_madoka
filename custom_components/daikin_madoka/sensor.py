@@ -29,7 +29,6 @@ async def async_setup_entry(
             MadokaIndoorSensor(coordinator),
             MadokaOutdoorSensor(coordinator),
             MadokaDisplayParametersSensor(coordinator),
-            MadokaRingModeSensor(coordinator),
         ]
     )
 
@@ -136,66 +135,4 @@ class MadokaDisplayParametersSensor(MadokaDisplaySensor):
         return {
             f"param_{param_id:#04x}": f"{value.hex()} ({int.from_bytes(value, 'big')})"
             for param_id, value in sorted(status.other.items())
-        }
-
-
-class MadokaRingModeSensor(MadokaEntity, SensorEntity):
-    """Behaviour of the status ring, read only.
-
-    The device accepts a write for this setting and pymadoka implements it, but
-    it lives inside an array shared with settings whose meaning is unknown, so
-    it is only read here until the write has been shown to be harmless.
-
-    The whole array is published as attributes, next to the minimum and maximum
-    the device declares for each entry: that is what a further setting of the
-    same menu can be mapped against.
-    """
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:circle-slice-8"
-
-    OPTIONS = {0: "normal", 1: "hotel_1", 2: "hotel_2"}
-
-    # What each behaviour does, as the official app documents it.
-    BEHAVIOURS = {
-        "normal": "The ring blinks on an error and shows the status while the screen is dimmed",
-        "hotel_1": "The ring does not blink on an error",
-        "hotel_2": "The ring does not blink on an error and shows no status while the screen is dimmed",
-    }
-
-    def __init__(self, coordinator: MadokaCoordinator) -> None:
-        """Initialize the ring mode sensor."""
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.address}_ring_mode"
-        self._attr_name = "Ring Mode"
-
-    @property
-    def ring_mode_status(self):
-        """Return the ring mode status, or None when the feature is missing."""
-        ring_mode = getattr(self.controller, "ring_mode", None)
-        if ring_mode is None:
-            return None
-        return ring_mode.status
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the behaviour the device reports."""
-        status = self.ring_mode_status
-        if status is None or status.mode is None:
-            return None
-        return self.OPTIONS.get(int(status.mode), str(int(status.mode)))
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return the raw array and the range the device declares for it."""
-        status = self.ring_mode_status
-        if status is None or status.values is None:
-            return None
-        option = self.native_value
-        return {
-            "behaviour": self.BEHAVIOURS.get(option),
-            "mode_index": status.MODE_INDEX,
-            "values": status.values.hex(),
-            "minimum": None if status.minimum is None else status.minimum.hex(),
-            "maximum": None if status.maximum is None else status.maximum.hex(),
         }
