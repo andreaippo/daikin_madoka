@@ -30,5 +30,16 @@
         "title": "Daikin Madoka options"
       }
     }
+  },
+  "entity": {
+    "select": {
+      "ring_mode": {
+        "state": {
+          "home": "Home",
+          "hotel_1": "Hotel 1",
+          "hotel_2": "Hotel 2"
+        }
+      }
+    }
   }
 }
