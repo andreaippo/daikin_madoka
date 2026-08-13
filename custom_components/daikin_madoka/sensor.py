@@ -154,7 +154,7 @@ class MadokaRingModeSensor(MadokaEntity, SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:circle-slice-8"
 
-    OPTIONS = {0: "home", 1: "hotel_1", 2: "hotel_2"}
+    OPTIONS = {0: "normal", 1: "hotel_1", 2: "hotel_2"}
 
     def __init__(self, coordinator: MadokaCoordinator) -> None:
         """Initialize the ring mode sensor."""
