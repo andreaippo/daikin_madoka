@@ -104,7 +104,6 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
     )
     _attr_hvac_modes = list(HA_MODE_TO_DAIKIN)
-    _attr_fan_modes = list(HA_FAN_MODE_TO_DAIKIN)
 
     def __init__(self, coordinator: MadokaCoordinator) -> None:
         """Initialize the climate device."""
@@ -237,6 +236,24 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
             await self._publish_written_state()
         except (ConnectionAbortedError, ConnectionException) as err:
             _LOGGER.debug("Could not set HVAC mode on %s: %s", self.coordinator.device_name, err)
+
+    @property
+    def fan_modes(self) -> list[str]:
+        """Return the fan speeds this indoor unit accepts.
+
+        Not every unit takes the automatic speed: the ones that do not refuse
+        the command and snap back to the speed they were on, which is no use as
+        an option in the UI. The device says so in the fan speed block, so the
+        option is dropped for those units.
+
+        The full list is returned until the unit has said otherwise, so a speed
+        is never withheld on the strength of a value not read yet.
+        """
+        modes = list(HA_FAN_MODE_TO_DAIKIN)
+        status = self.controller.fan_speed.status
+        if status is not None and not getattr(status, "supports_auto", True):
+            modes.remove(FAN_AUTO)
+        return modes
 
     @property
     def fan_mode(self) -> str | None:

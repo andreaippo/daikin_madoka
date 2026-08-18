@@ -142,12 +142,11 @@ class MadokaDisplayParametersSensor(MadokaDisplaySensor):
 class MadokaFanParametersSensor(MadokaEntity, SensorEntity):
     """Every fan speed parameter whose meaning is not known yet.
 
-    Asked with no parameter the device answers the whole fan speed block, not
-    just the two speeds. Which speeds an indoor unit actually accepts is not
-    mapped yet, and the units here do not all accept the same ones: one of them
-    refuses the automatic speed, from this integration and from the official app
-    alike. The unidentified parameters are published so the units can be told
-    apart and the difference tied to a parameter id.
+    Two parameters of the block turned out to be a mask of the speeds the unit
+    accepts, and bit 0 of them is the automatic speed: that much is mapped and
+    drives which options the climate entity offers. The masks are published here
+    all the same, next to the parameters still unaccounted for, because nothing
+    is claimed about their remaining bits.
     """
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -191,4 +190,12 @@ class MadokaFanParametersSensor(MadokaEntity, SensorEntity):
         }
         attributes["cooling_speed"] = str(status.cooling_fan_speed)
         attributes["heating_speed"] = str(status.heating_fan_speed)
+
+        for label, mask in (
+            ("cooling_speeds", status.cooling_speeds),
+            ("heating_speeds", status.heating_speeds),
+        ):
+            attributes[label] = None if mask is None else f"{mask:#04x} {mask:#010b}"
+
+        attributes["supports_auto"] = status.supports_auto
         return attributes
