@@ -38,6 +38,7 @@ class MadokaCoordinator(DataUpdateCoordinator[None]):
         )
         self.controller = controller
         self._info: dict[str, str] = {}
+        self._read_once_done = False
 
     @property
     def address(self) -> str:
@@ -73,3 +74,24 @@ class MadokaCoordinator(DataUpdateCoordinator[None]):
             await self.controller.update()
         except (ConnectionAbortedError, ConnectionException) as err:
             raise UpdateFailed(f"Error communicating with {self.address}: {err}") from err
+        await self._read_once()
+
+    async def _read_once(self) -> None:
+        """Read the features that pymadoka leaves out of the poll cycle.
+
+        The ring behaviour costs three BLE round-trips to read and only changes
+        when somebody changes it from the thermostat or the official app, so it
+        is read on the first successful cycle and then left alone.
+
+        It is read after the poll, and its failures are swallowed: the value is
+        a diagnostic one, and losing it must not throw away a cycle that read
+        everything else. A failed read is simply retried on the next cycle.
+        """
+        if self._read_once_done:
+            return
+        try:
+            await self.controller.ring_mode.query()
+        except Exception as err:  # noqa: BLE001 - diagnostic read, never fatal
+            _LOGGER.debug("Could not read the ring behaviour of %s: %s", self.address, err)
+            return
+        self._read_once_done = True
