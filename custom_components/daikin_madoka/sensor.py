@@ -29,6 +29,7 @@ async def async_setup_entry(
             MadokaIndoorSensor(coordinator),
             MadokaOutdoorSensor(coordinator),
             MadokaDisplayParametersSensor(coordinator),
+            MadokaFanParametersSensor(coordinator),
         ]
     )
 
@@ -136,3 +137,58 @@ class MadokaDisplayParametersSensor(MadokaDisplaySensor):
             f"param_{param_id:#04x}": f"{value.hex()} ({int.from_bytes(value, 'big')})"
             for param_id, value in sorted(status.other.items())
         }
+
+
+class MadokaFanParametersSensor(MadokaEntity, SensorEntity):
+    """Every fan speed parameter whose meaning is not known yet.
+
+    Asked with no parameter the device answers the whole fan speed block, not
+    just the two speeds. Which speeds an indoor unit actually accepts is not
+    mapped yet, and the units here do not all accept the same ones: one of them
+    refuses the automatic speed, from this integration and from the official app
+    alike. The unidentified parameters are published so the units can be told
+    apart and the difference tied to a parameter id.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:code-braces"
+    _attr_name = "Fan Parameters"
+
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
+        """Initialize the raw fan parameters sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_fan_parameters"
+
+    @property
+    def fan_status(self):
+        """Return the fan speed status, or None when it has not been read."""
+        return self.controller.fan_speed.status
+
+    @property
+    def native_value(self) -> int | None:
+        """Return how many unidentified parameters the device reported."""
+        status = self.fan_status
+        if status is None:
+            return None
+        return len(getattr(status, "other", {}))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return each unidentified parameter, by id, as hex, integer and bits.
+
+        The binary form is there because a parameter that says which speeds are
+        accepted is most likely a bit per speed.
+        """
+        status = self.fan_status
+        if status is None:
+            return None
+        attributes = {
+            f"param_{param_id:#04x}": (
+                f"{value.hex()} ({int.from_bytes(value, 'big')}) "
+                f"{int.from_bytes(value, 'big'):#010b}"
+            )
+            for param_id, value in sorted(getattr(status, "other", {}).items())
+        }
+        attributes["cooling_speed"] = str(status.cooling_fan_speed)
+        attributes["heating_speed"] = str(status.heating_fan_speed)
+        return attributes
