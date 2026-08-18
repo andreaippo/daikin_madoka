@@ -15,6 +15,7 @@ PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.NUMBER,
+    Platform.SELECT,
 ]
 
 DEFAULT_ADAPTER = "hci0"
