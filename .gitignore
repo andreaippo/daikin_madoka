@@ -145,4 +145,7 @@ POST_HA*
 # Local AI/editor settings
 .claude/
 AGENTS.md
-CONTEXT.md.DS_Store
+CONTEXT.md
+
+# macOS
+.DS_Store
