@@ -42,6 +42,11 @@ class MadokaRingModeSelect(MadokaEntity, SelectEntity):
     official app changing this one entry shows the other fifteen unchanged in
     the read taken right after.
 
+    The device only returns the array with the edit session open, so reading it
+    costs three BLE round-trips where every other feature costs one. It is read
+    every RING_MODE_POLL_CYCLES poll cycles rather than every one, so a change
+    made from the thermostat or the official app shows up within that window.
+
     The whole array is published as attributes, next to the minimum and maximum
     the device declares for each entry: that is what a further setting of the
     same menu can be mapped against.

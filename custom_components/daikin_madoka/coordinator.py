@@ -12,7 +12,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, MANUFACTURER, MODEL_PREFIX, SCAN_INTERVAL
+from .const import (
+    DOMAIN,
+    MANUFACTURER,
+    MODEL_PREFIX,
+    RING_MODE_POLL_CYCLES,
+    SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +44,8 @@ class MadokaCoordinator(DataUpdateCoordinator[None]):
         )
         self.controller = controller
         self._info: dict[str, str] = {}
+        # Zero so the first cycle reads it, then counted down between reads.
+        self._ring_mode_countdown = 0
 
     @property
     def address(self) -> str:
@@ -73,3 +81,30 @@ class MadokaCoordinator(DataUpdateCoordinator[None]):
             await self.controller.update()
         except (ConnectionAbortedError, ConnectionException) as err:
             raise UpdateFailed(f"Error communicating with {self.address}: {err}") from err
+        await self._read_ring_mode()
+
+    async def _read_ring_mode(self) -> None:
+        """Read the ring behaviour, which pymadoka keeps out of the poll cycle.
+
+        The device only returns it with the edit session open, so the read costs
+        three BLE round-trips against one for every other feature. It is read
+        once every RING_MODE_POLL_CYCLES cycles instead of every one, which is
+        still often enough to notice it being changed from the thermostat or the
+        official app.
+
+        It is read after the poll and its failures are swallowed: losing this
+        one value must not throw away a cycle that read everything else. A
+        failed read leaves the countdown alone, so it is retried on the next
+        cycle rather than waited out.
+        """
+        if self._ring_mode_countdown > 0:
+            self._ring_mode_countdown -= 1
+            return
+        try:
+            await self.controller.ring_mode.query()
+        except Exception as err:  # noqa: BLE001 - one diagnostic value, never fatal
+            _LOGGER.debug(
+                "Could not read the ring behaviour of %s: %s", self.address, err
+            )
+            return
+        self._ring_mode_countdown = RING_MODE_POLL_CYCLES
