@@ -265,3 +265,9 @@ RSSI_DISCOVERY_FLOOR = -90
 VALIDATE_TIMEOUT = PAIRING_CONNECT_TIMEOUT
 # Hard ceiling on one full-feature poll (queries retry individually).
 POLL_TIMEOUT = 45
+# Poll cycles between two reads of the ring behaviour. The device only returns
+# it with an edit session open, so a read costs three BLE round trips where
+# every other feature costs one; pymadoka keeps it out of Controller.update().
+# At the default scan interval, ten cycles is a change made from the
+# thermostat or the official app showing up within ten minutes.
+RING_MODE_POLL_CYCLES = 10

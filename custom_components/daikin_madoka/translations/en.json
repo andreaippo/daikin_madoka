@@ -152,6 +152,16 @@
         "name": "Reconnect"
       }
     },
+    "select": {
+      "ring_mode": {
+        "name": "Ring behaviour",
+        "state": {
+          "normal": "Normal",
+          "hotel_1": "Hotel 1",
+          "hotel_2": "Hotel 2"
+        }
+      }
+    },
     "number": {
       "ring_brightness": {
         "name": "Ring brightness"

@@ -152,6 +152,16 @@
         "name": "Riconnetti"
       }
     },
+    "select": {
+      "ring_mode": {
+        "name": "Comportamento dell'anello",
+        "state": {
+          "normal": "Normale",
+          "hotel_1": "Hotel 1",
+          "hotel_2": "Hotel 2"
+        }
+      }
+    },
     "number": {
       "ring_brightness": {
         "name": "Luminosità dell'anello"

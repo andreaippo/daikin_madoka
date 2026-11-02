@@ -50,6 +50,7 @@ from .const import (
     PAIRING_WINDOW_TIMEOUT,
     PAIRING_WINDOW_TTL_S,
     POLL_TIMEOUT,
+    RING_MODE_POLL_CYCLES,
     ROUND_HEADROOM_S,
     STALE_GRACE,
     TIMEOUT_BACKOFF_INTERVAL_S,
@@ -652,6 +653,9 @@ class MadokaCoordinator(DataUpdateCoordinator[dict]):
         # see _async_drop_silent_features. Per instance on purpose: a rebuilt
         # coordinator comes with a rebuilt Controller whose statuses are empty.
         self._feature_misses: dict[str, int] = {}
+        # Cycles left before the ring behaviour is read again; 0 reads it on
+        # the next successful poll.
+        self._ring_mode_countdown = 0
         # The task running a poll right now, if any.
         self._poll_task: asyncio.Task[Any] | None = None
         # Pairing suspension and window live in hass.data keyed by MAC, so
@@ -907,6 +911,7 @@ class MadokaCoordinator(DataUpdateCoordinator[dict]):
             if use_cached_energy:
                 self.controller.energy_consumption = energy
         self._async_drop_silent_features(before)
+        await self._async_read_ring_mode()
 
         # Snapshot (per-feature dict copies) so coordinator.data is not a live
         # view of controller state.
@@ -942,8 +947,35 @@ class MadokaCoordinator(DataUpdateCoordinator[dict]):
             for name, feature in vars(self.controller).items()
             if isinstance(feature, Feature)
             and not isinstance(feature, ResetCleanFilterTimer)
+            # Not queried by Controller.update(), so not answering a poll is
+            # no sign of a failing device: see _async_read_ring_mode.
+            and getattr(feature, "polled", True)
             and feature.status is not None
         }
+
+    async def _async_read_ring_mode(self) -> None:
+        """Read the ring behaviour every RING_MODE_POLL_CYCLES polls.
+
+        Read after the poll, and its failures are swallowed: losing this one
+        setting must not throw away a cycle that read everything else. A
+        failed read leaves the countdown at zero, so it is retried on the next
+        cycle rather than waited out.
+        """
+        ring_mode = getattr(self.controller, "ring_mode", None)
+        if not isinstance(ring_mode, Feature):
+            return
+        if self._ring_mode_countdown > 0:
+            self._ring_mode_countdown -= 1
+            return
+        try:
+            async with asyncio.timeout(POLL_TIMEOUT):
+                await ring_mode.query()
+        except (ConnectionAbortedError, ConnectionException, TimeoutError) as err:
+            _LOGGER.debug(
+                "Could not read the ring behaviour of %s: %s", self.address, err
+            )
+            return
+        self._ring_mode_countdown = RING_MODE_POLL_CYCLES
 
     @callback
     def _async_drop_silent_features(self, before: dict[str, Any]) -> None:

@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymadoka import RingMode, RingModeEnum, RingModeStatus
 from pymadoka.connection import ConnectionStatus
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -21,6 +22,9 @@ from custom_components.daikin_madoka import (
     number as number_platform,
 )
 from custom_components.daikin_madoka import (
+    select as select_platform,
+)
+from custom_components.daikin_madoka import (
     sensor as sensor_platform,
 )
 from custom_components.daikin_madoka.const import (
@@ -30,6 +34,7 @@ from custom_components.daikin_madoka.const import (
     CONF_PREFERRED_SOURCE,
     DEVICE_TYPE_VENTILATION,
     DOMAIN,
+    RING_MODE_POLL_CYCLES,
 )
 from custom_components.daikin_madoka.coordinator import MadokaCoordinator
 
@@ -53,6 +58,8 @@ def _mock_controller() -> MagicMock:
         brightness=19, contrast=10, ring_brightness=5
     )
     controller.display.update = AsyncMock()
+    controller.ring_mode.status = None
+    controller.ring_mode.update = AsyncMock()
     controller.reset_clean_filter_timer.update = AsyncMock()
     return controller
 
@@ -336,6 +343,74 @@ async def test_button_setup_and_presses(hass: HomeAssistant) -> None:
     # The reconnect button exists to recover a dead link: always available.
     coordinator.last_update_success = False
     assert by_id[f"{MAC}_reconnect"].available is True
+
+
+# --- select ----------------------------------------------------------------
+
+
+async def test_ring_mode_select_state_and_write(hass: HomeAssistant) -> None:
+    controller = _mock_controller()
+    coordinator, entry = _coordinator(hass, controller)
+    entities = await _setup_platform(select_platform, hass, coordinator, entry)
+
+    assert [entity.unique_id for entity in entities] == [f"{MAC}_ring_mode"]
+    select = entities[0]
+    assert select.options == ["normal", "hotel_1", "hotel_2"]
+    assert select.current_option is None
+
+    controller.ring_mode.status = RingModeStatus(mode=RingModeEnum.HOTEL_2)
+    assert select.current_option == "hotel_2"
+
+    await select.async_select_option("hotel_1")
+    status = controller.ring_mode.update.call_args[0][0]
+    assert status.mode is RingModeEnum.HOTEL_1
+
+
+def _ring_mode(**overrides) -> RingMode:
+    """A real RingMode, so the coordinator treats it as a feature, minus I/O."""
+    feature = RingMode.__new__(RingMode)
+    feature.status = None
+    for name, value in overrides.items():
+        setattr(feature, name, value)
+    return feature
+
+
+async def test_ring_mode_is_read_every_few_polls_only(hass: HomeAssistant) -> None:
+    """Three round trips per read: not worth it on every cycle."""
+    controller = _mock_controller()
+    controller.ring_mode = _ring_mode(query=AsyncMock())
+    coordinator, _entry = _coordinator(hass, controller)
+
+    for _ in range(RING_MODE_POLL_CYCLES + 2):
+        await coordinator._async_read_ring_mode()
+
+    assert controller.ring_mode.query.await_count == 2
+
+
+async def test_a_failed_ring_mode_read_is_retried_next_poll(
+    hass: HomeAssistant,
+) -> None:
+    controller = _mock_controller()
+    controller.ring_mode = _ring_mode(query=AsyncMock(side_effect=[TimeoutError, None]))
+    coordinator, _entry = _coordinator(hass, controller)
+
+    await coordinator._async_read_ring_mode()
+    await coordinator._async_read_ring_mode()
+
+    assert controller.ring_mode.query.await_count == 2
+
+
+async def test_an_unpolled_feature_is_not_counted_as_silent(
+    hass: HomeAssistant,
+) -> None:
+    """Controller.update() skips the ring mode: unchanged after a poll is not
+    a missed answer, and must not blank the select."""
+    controller = _mock_controller()
+    controller.ring_mode = _ring_mode()
+    controller.ring_mode.status = RingModeStatus(mode=RingModeEnum.NORMAL)
+    coordinator, _entry = _coordinator(hass, controller)
+
+    assert "ring_mode" not in coordinator._feature_statuses()
 
 
 # --- number ----------------------------------------------------------------

@@ -61,6 +61,11 @@
         "default": "mdi:bluetooth-connect"
       }
     },
+    "select": {
+      "ring_mode": {
+        "default": "mdi:circle-slice-8"
+      }
+    },
     "number": {
       "ring_brightness": {
         "default": "mdi:circle-outline"

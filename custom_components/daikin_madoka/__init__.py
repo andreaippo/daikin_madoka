@@ -40,7 +40,7 @@ from .coordinator import (
 from .frontend import async_register_card
 from .util import build_candidates, entry_macs, normalize_mac, registry_devices
 
-COMPONENT_TYPES = ["climate", "sensor", "binary_sensor", "button", "number"]
+COMPONENT_TYPES = ["climate", "sensor", "binary_sensor", "button", "number", "select"]
 
 _LOGGER = logging.getLogger(__name__)
 

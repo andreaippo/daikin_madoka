@@ -152,6 +152,16 @@
         "name": "Reconnecter"
       }
     },
+    "select": {
+      "ring_mode": {
+        "name": "Comportement de l'anneau",
+        "state": {
+          "normal": "Normal",
+          "hotel_1": "Hôtel 1",
+          "hotel_2": "Hôtel 2"
+        }
+      }
+    },
     "number": {
       "ring_brightness": {
         "name": "Luminosité de l'anneau"
