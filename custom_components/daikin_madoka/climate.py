@@ -208,6 +208,23 @@ class DaikinMadokaClimate(MadokaEntity, ClimateEntity):
         return features
 
     @property
+    def fan_modes(self) -> list[str]:
+        """Return the fan speeds this unit accepts.
+
+        Not every indoor unit takes the automatic speed: one that does not
+        ignores the write and stays on its speed, from the official app as
+        well. The thermostat says so in its fan speed block, so AUTO is only
+        offered where it works. Until that block has been read every speed is
+        offered, so none is withheld on the strength of a value not seen yet.
+        """
+        if self._is_ventilation:
+            return self._attr_fan_modes
+        status = self.controller.fan_speed.status
+        if status is not None and not getattr(status, "supports_auto", True):
+            return [mode for mode in self._attr_fan_modes if mode != FAN_AUTO]
+        return self._attr_fan_modes
+
+    @property
     def current_temperature(self) -> float | None:
         """Return the current temperature."""
         if self.controller.temperatures.status is None:

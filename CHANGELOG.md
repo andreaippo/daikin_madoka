@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### AUTO fan speed only where the unit accepts it
+
+Not every indoor unit takes the automatic fan speed: one that does not ignores
+the write and stays on its speed, from the official Daikin app as well. The fan
+speed list now offers AUTO only where the thermostat reports it as accepted
+(requires pymadoka-ng 0.4.3, which reads the fan speed block whole). Until that
+report has been read, every speed is offered as before. Validated on four
+thermostats: three keep AUTO, the one whose unit refuses it shows low, medium
+and high only.
+
 ### A refused pairing no longer says a prompt is waiting
 
 When the thermostat refused to pair, setup always said a pairing prompt was

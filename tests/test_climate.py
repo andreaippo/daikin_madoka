@@ -7,6 +7,7 @@ import pytest
 from pymadoka import (
     ConnectionException,
     FanSpeedEnum,
+    FanSpeedStatus,
     OperationModeEnum,
     VentilationModeEnum,
     VentilationStatus,
@@ -245,6 +246,43 @@ async def test_ventilation_offers_two_fan_speeds(hass: HomeAssistant) -> None:
 async def test_thermostat_keeps_all_fan_speeds(hass: HomeAssistant) -> None:
     """Restricting the VAM must not narrow a thermostat's fan modes."""
     entity = _entity(hass, _mock_controller())
+
+    assert entity.fan_modes == [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_AUTO]
+
+
+async def test_thermostat_hides_auto_on_a_unit_that_refuses_it(
+    hass: HomeAssistant,
+) -> None:
+    """Heating mask 0x0c: the indoor unit ignores a write of the AUTO speed."""
+    controller = _mock_controller()
+    controller.fan_speed.status = FanSpeedStatus()
+    controller.fan_speed.status.set_values(
+        {0x12: bytearray([0x1D]), 0x13: bytearray([0x0C])}
+    )
+    entity = _entity(hass, controller)
+
+    assert entity.fan_modes == [FAN_LOW, FAN_MEDIUM, FAN_HIGH]
+
+
+async def test_thermostat_offers_auto_on_a_unit_that_accepts_it(
+    hass: HomeAssistant,
+) -> None:
+    controller = _mock_controller()
+    controller.fan_speed.status = FanSpeedStatus()
+    controller.fan_speed.status.set_values(
+        {0x12: bytearray([0x1D]), 0x13: bytearray([0x0D])}
+    )
+    entity = _entity(hass, controller)
+
+    assert entity.fan_modes == [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_AUTO]
+
+
+async def test_thermostat_offers_auto_before_the_masks_are_read(
+    hass: HomeAssistant,
+) -> None:
+    controller = _mock_controller()
+    controller.fan_speed.status = None
+    entity = _entity(hass, controller)
 
     assert entity.fan_modes == [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_AUTO]
 
