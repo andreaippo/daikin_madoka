@@ -153,8 +153,14 @@
       }
     },
     "number": {
-      "eye_brightness": {
-        "name": "Eye brightness"
+      "ring_brightness": {
+        "name": "Ring brightness"
+      },
+      "display_brightness": {
+        "name": "Display brightness"
+      },
+      "display_contrast": {
+        "name": "Display contrast"
       }
     }
   },

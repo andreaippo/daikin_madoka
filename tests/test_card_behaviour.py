@@ -52,6 +52,15 @@ def test_siblings_are_found_whatever_the_entity_id_language(results: dict) -> No
     }
 
 
+def test_the_brightness_slider_drives_the_ring(results: dict) -> None:
+    """The display levels are number entities too: the fallback that takes
+    any number entity must not hand the slider one of them."""
+    assert (
+        results["brightness_slider_drives_the_ring"]
+        == "number.salone_luminosita_dell_anello"
+    )
+
+
 def test_attribute_values_are_escaped_before_reaching_the_dom(results: dict) -> None:
     assert results["fan_mode_markup_is_escaped"] is False
 

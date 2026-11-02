@@ -1,6 +1,6 @@
 """Support for Daikin Madoka numbers."""
 
-from pymadoka.features.eye_brightness import EyeBrightnessStatus
+from pymadoka import DisplayStatus
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import EntityCategory
@@ -18,34 +18,77 @@ async def async_setup_entry(
 ) -> None:
     """Set up Daikin Madoka numbers based on config_entry."""
     async_add_entities(
-        MadokaEyeBrightnessNumber(coordinator)
+        entity
         for coordinator in entry.runtime_data.values()
+        for entity in (
+            MadokaRingBrightnessNumber(coordinator),
+            MadokaDisplayBrightnessNumber(coordinator),
+            MadokaDisplayContrastNumber(coordinator),
+        )
     )
 
 
-class MadokaEyeBrightnessNumber(MadokaEntity, NumberEntity):
-    """Number to control the controller eye (LED) brightness."""
+class MadokaDisplayLevelNumber(MadokaEntity, NumberEntity):
+    """A level of the display feature, on the device's own 0-19 scale.
 
-    _attr_translation_key = "eye_brightness"
+    Each level is one parameter of function 0x0302, and a write carries that
+    parameter alone, as the official app does.
+    """
+
     _attr_entity_category = EntityCategory.CONFIG
     _attr_native_min_value = 0
     _attr_native_max_value = 19
     _attr_native_step = 1
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, coordinator: MadokaCoordinator) -> None:
-        super().__init__(coordinator, "eye_brightness")
+    #: DisplayStatus attribute this entity reads and writes.
+    _level: str
 
     @property
     def native_value(self) -> int | None:
-        """Return the current LED brightness."""
-        if self.controller.eye_brightness.status is None:
+        """Return the level read from the device."""
+        status = self.controller.display.status
+        if status is None:
             return None
-        return self.controller.eye_brightness.status.brightness
+        return getattr(status, self._level)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set the LED brightness on the device."""
+        """Write the level to the device."""
         await self._async_execute(
-            "set eye brightness",
-            lambda: self.controller.eye_brightness.update(EyeBrightnessStatus(int(value))),
+            f"set {self._level.replace('_', ' ')}",
+            lambda: self.controller.display.update(
+                DisplayStatus(**{self._level: int(value)})
+            ),
         )
+
+
+class MadokaRingBrightnessNumber(MadokaDisplayLevelNumber):
+    """Brightness of the status ring around the display (parameter 0x33)."""
+
+    _attr_translation_key = "ring_brightness"
+    _level = "ring_brightness"
+
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
+        # Released as "eye_brightness": the unique_id keeps that suffix so the
+        # entity, its entity_id and its history survive the rename.
+        super().__init__(coordinator, "eye_brightness")
+
+
+class MadokaDisplayBrightnessNumber(MadokaDisplayLevelNumber):
+    """Brightness of the display (parameter 0x32)."""
+
+    _attr_translation_key = "display_brightness"
+    _level = "brightness"
+
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
+        super().__init__(coordinator, "display_brightness")
+
+
+class MadokaDisplayContrastNumber(MadokaDisplayLevelNumber):
+    """Contrast of the display (parameter 0x31)."""
+
+    _attr_translation_key = "display_contrast"
+    _level = "contrast"
+
+    def __init__(self, coordinator: MadokaCoordinator) -> None:
+        super().__init__(coordinator, "display_contrast")

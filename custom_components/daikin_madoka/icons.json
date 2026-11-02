@@ -62,8 +62,14 @@
       }
     },
     "number": {
-      "eye_brightness": {
+      "ring_brightness": {
+        "default": "mdi:circle-outline"
+      },
+      "display_brightness": {
         "default": "mdi:brightness-6"
+      },
+      "display_contrast": {
+        "default": "mdi:contrast-circle"
       }
     }
   }

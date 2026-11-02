@@ -49,8 +49,10 @@ def _mock_controller() -> MagicMock:
     controller.clean_filter_indicator.status = SimpleNamespace(
         clean_filter_indicator=True
     )
-    controller.eye_brightness.status = SimpleNamespace(brightness=10)
-    controller.eye_brightness.update = AsyncMock()
+    controller.display.status = SimpleNamespace(
+        brightness=19, contrast=10, ring_brightness=5
+    )
+    controller.display.update = AsyncMock()
     controller.reset_clean_filter_timer.update = AsyncMock()
     return controller
 
@@ -344,13 +346,45 @@ async def test_number_setup_state_and_write(hass: HomeAssistant) -> None:
     coordinator, entry = _coordinator(hass, controller)
     entities = await _setup_platform(number_platform, hass, coordinator, entry)
 
-    assert [entity.unique_id for entity in entities] == [f"{MAC}_eye_brightness"]
-    number = entities[0]
-    assert number.native_value == 10
+    by_id = {entity.unique_id: entity for entity in entities}
+    assert list(by_id) == [
+        f"{MAC}_eye_brightness",
+        f"{MAC}_display_brightness",
+        f"{MAC}_display_contrast",
+    ]
+    ring = by_id[f"{MAC}_eye_brightness"]
+    brightness = by_id[f"{MAC}_display_brightness"]
+    contrast = by_id[f"{MAC}_display_contrast"]
+    assert (ring.native_value, brightness.native_value, contrast.native_value) == (
+        5,
+        19,
+        10,
+    )
 
-    await number.async_set_native_value(5.0)
-    status = controller.eye_brightness.update.call_args[0][0]
-    assert status.brightness == 5
+    await contrast.async_set_native_value(3.0)
+    status = controller.display.update.call_args[0][0]
+    # One parameter per write, as the official app does.
+    assert status.get_values() == {0x31: b"\x03"}
 
-    controller.eye_brightness.status = None
-    assert number.native_value is None
+    await ring.async_set_native_value(7.0)
+    status = controller.display.update.call_args[0][0]
+    assert status.get_values() == {0x33: b"\x07"}
+
+    controller.display.status = None
+    assert ring.native_value is None
+
+
+async def test_the_ring_keeps_the_eye_brightness_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """Released as "Eye brightness": 0x33 is the status ring, not the screen.
+
+    The entity is renamed, but its unique_id must not change, or every existing
+    install would get a new entity and lose the old one's entity_id and history.
+    """
+    controller = _mock_controller()
+    coordinator, entry = _coordinator(hass, controller)
+    entities = await _setup_platform(number_platform, hass, coordinator, entry)
+
+    ring = next(e for e in entities if e.translation_key == "ring_brightness")
+    assert ring.unique_id == f"{MAC}_eye_brightness"

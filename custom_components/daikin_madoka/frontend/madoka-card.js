@@ -74,9 +74,13 @@ const BUMP_SEND_MS = 600;
 const BUMP_PENDING_MS = 15000;
 // Registry translation keys of the integration's sibling entities. The
 // entity_id is only a fallback: it is generated in the user's language.
+// The display levels have slots of their own, unused by the card, so the
+// "any number entity" fallback below cannot take one of them for the ring.
 const SIBLING_KEYS = {
   outdoor_temperature: "outdoor", indoor_temperature: "indoor",
-  eye_brightness: "brightness", clean_filter: "filter", rssi: "rssi", reconnect: "reconnect",
+  ring_brightness: "brightness",
+  display_brightness: "display_brightness", display_contrast: "display_contrast",
+  clean_filter: "filter", rssi: "rssi", reconnect: "reconnect",
 };
 // Native HA / Material Design icons — crisp and familiar.
 const mdi = (name, cls) => `<ha-icon icon="${name}"${cls ? ` class="${cls}"` : ""}></ha-icon>`;

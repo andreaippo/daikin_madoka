@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Display brightness and contrast; "Eye brightness" is the ring
+
+The thermostat's display has three levels, each on its 0-19 scale: display
+brightness, display contrast, and the brightness of the status ring around it.
+The one this integration exposed as "Eye brightness" is the ring, so it is now
+named **Ring brightness**. It keeps its entity ID and history. **Display
+brightness** and **Display contrast** are new, next to it among the device's
+configuration entities. The card's brightness slider still drives the ring.
+Requires pymadoka-ng 0.5.0.
+
 ### AUTO fan speed only where the unit accepts it
 
 Not every indoor unit takes the automatic fan speed: one that does not ignores

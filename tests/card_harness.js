@@ -178,6 +178,22 @@ const scenarios = {
     const ids = card._resolve();
     return { outdoor: ids.outdoor, indoor: ids.indoor };
   },
+  // The slider drives the ring, even when a display level is met first.
+  brightness_slider_drives_the_ring() {
+    const entities = {
+      [ENTITY]: { device_id: "dev1" },
+      "number.salone_contrasto_del_display": { device_id: "dev1", translation_key: "display_contrast" },
+      "number.salone_luminosita_del_display": { device_id: "dev1", translation_key: "display_brightness" },
+      "number.salone_luminosita_dell_anello": { device_id: "dev1", translation_key: "ring_brightness" },
+    };
+    const states = {
+      "number.salone_contrasto_del_display": { state: "10", attributes: {} },
+      "number.salone_luminosita_del_display": { state: "19", attributes: {} },
+      "number.salone_luminosita_dell_anello": { state: "5", attributes: {} },
+    };
+    const card = makeCard({}, makeHass({ entities, states }));
+    return card._resolve().brightness;
+  },
   // The readout follows the presses at once; HA catches up seconds later.
   pending_target_is_shown() {
     const hass = makeHass();

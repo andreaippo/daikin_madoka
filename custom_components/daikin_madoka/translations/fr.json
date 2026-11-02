@@ -153,8 +153,14 @@
       }
     },
     "number": {
-      "eye_brightness": {
-        "name": "Luminosité du voyant"
+      "ring_brightness": {
+        "name": "Luminosité de l'anneau"
+      },
+      "display_brightness": {
+        "name": "Luminosité de l'écran"
+      },
+      "display_contrast": {
+        "name": "Contraste de l'écran"
       }
     }
   },
