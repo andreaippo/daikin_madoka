@@ -16,6 +16,6 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/dasimon135/daikin_madoka/issues",
   "loggers": ["pymadoka"],
-  "requirements": ["pymadoka-ng @ git+https://github.com/andreaippo/pymadoka.git@f65bfcfb837465b8d5bc83820972b7a87a88f052"],
+  "requirements": ["pymadoka-ng @ git+https://github.com/andreaippo/pymadoka.git@a271a09cea5ddadb3c965c4d81a527550415ece5"],
   "version": "3.14.1"
 }
