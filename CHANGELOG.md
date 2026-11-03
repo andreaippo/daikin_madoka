@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### A dropped link comes back at once, and a write waits for it
+
+When the Bluetooth link dropped, the integration only noticed on its next
+poll, up to a whole scan interval later. Until then the thermostat was
+unavailable and every command failed straight away with "Bluetooth connection
+not available", and nothing sent it again: an automation turning the heating
+on in the morning simply failed. In one field log the link dropped 150 ms
+after a mode change, two retries by hand failed instantly, and the reconnect
+started 30 s later with the next poll.
+
+Now the coordinator reconnects 3 s after a drop (the thermostat needs a moment
+to advertise again), through the same refresh as a poll, so the shared connect
+lock, the pairing suspension and the timeout backoff still apply. A link that
+drops again within a minute is left to the poll cadence instead of being
+reconnected in a loop. A command that fails because the link is down waits up
+to 45 s for the reconnect and is then sent once more; a command that times
+out with the link up is not retried. Requires pymadoka-ng with
+`Connection.disconnected_callback`; with an older library the drop is still
+picked up by the next poll, as before.
+
 ### Display brightness and contrast; "Eye brightness" is the ring
 
 The thermostat's display has three levels, each on its 0-19 scale: display
