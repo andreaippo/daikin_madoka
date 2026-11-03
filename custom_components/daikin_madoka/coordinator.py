@@ -93,6 +93,20 @@ FEATURE_MISS_LIMIT = 3
 BOOST_DELAY = 4
 # How long an unload waits for a cancelled poll to wind down.
 POLL_CANCEL_TIMEOUT = 10
+# A dropped link is reconnected this long after the drop instead of on the
+# next poll (up to a whole scan interval later). The BRC1H stops advertising
+# while connected and takes a moment to resume, the same reason
+# async_reconnect waits before its refresh.
+LINK_LOST_RECONNECT_DELAY_S = 3.0
+# At most one drop-triggered reconnect per this many seconds. A link that
+# keeps dropping right after connecting goes back to the poll cadence (and its
+# backoff) instead of reconnecting in a tight loop.
+LINK_LOST_MIN_INTERVAL_S = 60.0
+# How long a write waits for the link to come back before giving up. Covers
+# a connect under the automatic profile plus a short wait on the shared
+# connect lock; past that the reconnect carries on in the background and the
+# write fails as it did before.
+WRITE_RECONNECT_TIMEOUT_S = 45.0
 DOCS_URL = "https://github.com/dasimon135/daikin_madoka#requirements"
 
 # One BLE connect at a time across every Madoka device. Several thermostats
@@ -637,6 +651,13 @@ class MadokaCoordinator(DataUpdateCoordinator[dict]):
         self._pairing_slow_issue_active = False
         self._unbonded_path_issue_active = False
         self._boost_unsub: CALLBACK_TYPE | None = None
+        # Drop-triggered reconnect (see async_on_link_lost): its pending timer,
+        # when the last one was scheduled, and when the link last dropped.
+        self._link_lost_unsub: CALLBACK_TYPE | None = None
+        self._link_lost_reconnect_at: float | None = None
+        self._link_lost_at: float | None = None
+        # The refresh a write is waiting on, shared by concurrent writes.
+        self._write_reconnect_task: asyncio.Task[None] | None = None
         # Cancel handle of the pairing window's time-to-live timer, and the
         # poll interval to go back to once a timeout backoff ends.
         self._pairing_window_unsub: CALLBACK_TYPE | None = None
@@ -1080,6 +1101,90 @@ class MadokaCoordinator(DataUpdateCoordinator[dict]):
             self.hass.async_create_task(self.async_request_refresh())
 
         self._boost_unsub = async_call_later(self.hass, BOOST_DELAY, _followup)
+
+    @callback
+    def async_on_link_lost(self) -> None:
+        """Reconnect shortly after the live link drops.
+
+        Wired as pymadoka's disconnected_callback. The coordinator is the only
+        owner of reconnects (the controller runs with reconnect=False), and it
+        used to learn about a drop on its next poll only: up to a whole scan
+        interval with the device unavailable and every command failing with
+        "connection not available". The reconnect still goes through a normal
+        refresh, so the connect lock, the pairing suspension and the backoff
+        all apply to it exactly as to a poll.
+        """
+        now = monotonic()
+        self._link_lost_at = now
+        if self._link_lost_unsub is not None:
+            return
+        last = self._link_lost_reconnect_at
+        if last is not None and now - last < LINK_LOST_MIN_INTERVAL_S:
+            _LOGGER.debug(
+                "%s dropped the link again within %ss; leaving the reconnect "
+                "to the poll cadence",
+                self.address,
+                LINK_LOST_MIN_INTERVAL_S,
+            )
+            return
+        self._link_lost_reconnect_at = now
+        _LOGGER.debug(
+            "%s dropped the link; reconnecting in %ss",
+            self.address,
+            LINK_LOST_RECONNECT_DELAY_S,
+        )
+
+        @callback
+        def _reconnect(_now) -> None:
+            self._link_lost_unsub = None
+            if (
+                self.controller.connection.connection_status
+                is ConnectionStatus.CONNECTED
+            ):
+                # A poll or a write got there first.
+                return
+            # NOT async_request_refresh: its Debouncer drops the call while a
+            # poll holds the refresh lock (see async_reconnect).
+            self.hass.async_create_task(self.async_refresh())
+
+        self._link_lost_unsub = async_call_later(
+            self.hass, LINK_LOST_RECONNECT_DELAY_S, _reconnect
+        )
+
+    async def async_ensure_connected(self) -> bool:
+        """Bring the link back up for a write. True once it is up.
+
+        A write used to fail at once whenever the link was down, and nothing
+        retried it: an automation turning the heating on in the morning
+        stayed failed. The reconnect is a normal refresh (lock, suspension and
+        backoff apply), shared by concurrent writes and shielded, so a write
+        that stops waiting does not cancel an attempt halfway through a
+        connect.
+        """
+        conn = self.controller.connection
+        if conn.connection_status is ConnectionStatus.CONNECTED:
+            return True
+        if self._link_lost_at is not None:
+            # Same settle delay as the drop-triggered reconnect: connecting
+            # before the BRC1H advertises again fails fast.
+            wait = LINK_LOST_RECONNECT_DELAY_S - (monotonic() - self._link_lost_at)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            if conn.connection_status is ConnectionStatus.CONNECTED:
+                return True
+        task = self._write_reconnect_task
+        if task is None or task.done():
+            task = self.hass.async_create_task(self.async_refresh())
+            self._write_reconnect_task = task
+        try:
+            await asyncio.wait_for(asyncio.shield(task), WRITE_RECONNECT_TIMEOUT_S)
+        except TimeoutError:
+            _LOGGER.debug(
+                "%s did not reconnect within %ss for a write",
+                self.address,
+                WRITE_RECONNECT_TIMEOUT_S,
+            )
+        return conn.connection_status is ConnectionStatus.CONNECTED
 
     async def async_reconnect(self) -> None:
         """Force a fresh BLE connection, then refresh."""
@@ -2059,6 +2164,9 @@ class MadokaCoordinator(DataUpdateCoordinator[dict]):
         if self._boost_unsub is not None:
             self._boost_unsub()
             self._boost_unsub = None
+        if self._link_lost_unsub is not None:
+            self._link_lost_unsub()
+            self._link_lost_unsub = None
         # Explicit even though _clear_issues closes the window too: an armed
         # TTL callback must never outlive the coordinator it points at.
         self._async_cancel_pairing_window_timer()

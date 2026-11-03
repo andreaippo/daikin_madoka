@@ -267,6 +267,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadokaConfigEntry) -> bo
             friendly_name=friendly_name,
             energy_enabled=energy_enabled,
         )
+        # Assigned rather than passed to Controller(): a pymadoka without the
+        # hook ignores the attribute, so the integration keeps working on it
+        # (and simply reconnects on the next poll, as before).
+        controller.connection.disconnected_callback = coordinator.async_on_link_lost
 
         try:
             await coordinator.async_config_entry_first_refresh()
