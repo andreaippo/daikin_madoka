@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### A lost reply is resent after 2 s instead of failing after 10 s
+
+Every command waited once, 10 s, for the thermostat's reply. A reply lost on
+the way (a dropped Bluetooth notification) cost those 10 s and then failed the
+command or the poll. The integration now asks pymadoka for three attempts of
+2 s each: the BRC1H answers in well under half a second, so resending is
+quicker than waiting. Only timeouts are retried, and late replies of an
+abandoned attempt are dropped by the library so they cannot answer the next
+command. Requires pymadoka-ng with `Connection.command_max_tries`; an older
+library keeps its single 10 s attempt.
+
 ### A dropped link comes back at once, and a write waits for it
 
 When the Bluetooth link dropped, the integration only noticed on its next

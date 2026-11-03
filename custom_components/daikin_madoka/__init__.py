@@ -19,6 +19,8 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    COMMAND_MAX_TRIES,
+    COMMAND_TIMEOUT_S,
     CONF_BONDED_SOURCES,
     CONF_DEVICE_TYPE,
     CONF_ENABLE_ENERGY,
@@ -260,6 +262,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadokaConfigEntry) -> bo
             allowed_sources_callback=_allowed_sources,
             device_type=library_device_type,
         )
+        # Assigned rather than passed: a pymadoka without the command policy
+        # ignores them and keeps its single 10 s attempt.
+        controller.connection.command_timeout = COMMAND_TIMEOUT_S
+        controller.connection.command_max_tries = COMMAND_MAX_TRIES
         coordinator = MadokaCoordinator(
             hass,
             controller,

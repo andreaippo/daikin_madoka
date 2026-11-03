@@ -169,6 +169,13 @@ STALE_GRACE = 2
 # Must exceed the connect path's internal budget (establish_connection retries
 # + pairing + settle), or reconnects get cancelled mid-handshake.
 CONNECT_TIMEOUT = 30
+# Command policy handed to pymadoka: three attempts of 2 s each instead of a
+# single 10 s wait. A BRC1H answers in well under half a second, so a reply
+# that has not come in 2 s is lost (a dropped notification) and resending is
+# faster than waiting. Only timeouts are retried; the commands carry absolute
+# values, so repeating one is harmless.
+COMMAND_TIMEOUT_S = 2.0
+COMMAND_MAX_TRIES = 3
 
 # AUTOMATIC profile. No human is involved, so this budget is not about giving
 # anyone time to confirm: it is about letting a *valid* bond finish encrypting
